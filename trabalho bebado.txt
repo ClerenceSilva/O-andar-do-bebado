@@ -1,0 +1,53 @@
+Os trabalhos devem ser entregues em relatórios no formato rmarkdown (ou análogo) e serem reprodutíveis.
+Os relatórios devem conter pelo menos três sessões: 
+
+introdução com a descrição e fundamentos para resolução,
+sessão com os códigos e experimentos/simulações computacionais, 
+discussão e conclusões.
+
+O “andar do bêbado”
+
+(Baseado em (Dachs 1988)) O problema ilustra umsistema de trajetórias aleatórias e como alegoria imagina um “bêbado” que sai de um bar e tenta chegar em casa.
+
+Assume-se um esquema simplificado de quadras de uma cidade com quadras quadradas e de lado igual a 1. O ponto de partida é o cruzamento na coordenada (0, 0) e, andando uma unidade de distância em qualquer uma das quatro direções, chega-se a outro cruzamento. O objetivo é chegar no ponto de coordenadas (3, 4).
+
+Define-se que:
+
+gasta-se 5 minutos para ir de uma esquina a outra;
+em cada esquina toma-se uma das direções com as prespectivas probabilidades leste(0,35), norte(0,45), sul (0,10) e oeste(0,10);
+70% das vezes que chega-se em uma esquina, toma-se imediatamente a decisão sobre qual direção seguir enquanto que nas demais 30%, demora-se 1 minuto para tomar a decisão.
+Além de “chegar em casa” (chegar em (3,4)), é necessário definir outro “critério de parada”, como o tempo máximo da tentativa.
+
+Estimar probabilidade de chegar em casa em até uma hora. A estimativa deve vir acompanhada de alguma medida de variabilidade/incerteza.
+Obter a distribuição do números de chegadas em 100 tentativas.
+Obter a distribuição de probabilidades dos possíveis tempos.
+Verificar a probabilidade de chegada para outros tempos, que não de uma hora, máximos de tentativa. Descreva o comportamento destas probabilidades começando do menor tempo possível de 35 minutos.
+Crie visualizações para os dados/resultados.
+
+
+o trabalho é referente a disciplina: CE-312 - Estatística Computacional
+
+Programa/objetivos da disciplina
+Revisão e conceitos da linguagem R
+Objetos, classes e métodos
+Algoritmos e programação funcional
+Vetorização
+Documentos dinâmicos
+Simulação (Monte Carlo) em problemas de probabilidade e estatística
+Revisão de princípios de inferência estatística e ilustrações computacionais
+Simulações como instrumento para inferência e para avaliar procedimentos
+Métodos para geração de números aleatórios
+Geração de números uniformes
+Método da transformação integral da probabilidade
+Métodos baseados em relações entre variáveis aleatórias
+Método da aceitação e rejeição
+Métodos estatísticos computacionalmente intensivos
+Integração de Monte Carlo
+Métodos de Monte Carlo em inferência estatística
+Métodos de reamostragem: jackknife e bootstrap
+Aplicação de métodos de reamostragem
+Testes de permutação
+Métodos de Monte Carlo via Cadeias de Markov (MCMC)
+Ementa
+Métodos computacionalmente intensivos. Tópicos avançados da linguagem R. Métodos para geração de números aleatórios. Integração de Monte Carlo. Métodos de Monte Carlo em inferência. Bootstrap e Jackknife. Testes de permutação. Métodos de Monte Carlo via Cadeias de Markov (MCMC). Estimativas de densidade de probabilidade. Métodos de otimização.
+

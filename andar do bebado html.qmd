@@ -1,0 +1,2076 @@
+---
+title: "O “andar do bêbado”"
+subtitle: "CE-312 - Estatística Computacional"
+author:
+  - name: "Vinicius de Lima Santana - GRR20233890"
+
+lang: pt
+
+format:
+  html:
+    theme: default
+    toc: true
+    toc-title: "Sumário"
+    toc-location: left
+    number-sections: true
+    code-fold: true
+    code-tools: false
+    code-block-bg: "#f8f8f8"
+    code-block-border-left: "#2c3e50"
+    code-line-numbers: false
+    highlight-style: github
+    embed-resources: true
+    include-in-header:
+      text: |
+        <style>
+          p {
+            text-indent: 1.25cm;
+          }
+        </style>
+
+knitr:
+  opts_chunk:
+    fig.align: "center"
+    out.width: "85%"
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: false
+  freeze: auto
+---
+
+```{r setup, echo=FALSE}
+# Pacotes utilizados
+library(ggplot2)
+library(dplyr)
+library(scales)
+library(tidyr)
+
+# Semente global — chunks cacheados (simula-trajetorias, simula-heatmap) redefinem
+# localmente para garantir reproducibilidade independente do estado do cache
+set.seed(777)
+
+```
+
+# Introdução
+
+## Descrição do Problema
+
+O problema do "Andar do Bêbado" é um exemplo clássico de **trajetória aleatória** (*random walk*), 
+aqui proposto por Dachs (1988) em um contexto urbano. A situação é a seguinte: um indivíduo parte 
+do cruzamento na coordenada $(0, 0)$ de uma malha de ruas com quadras quadradas de lado $1$ e tenta 
+chegar à sua casa, localizada no ponto $(3, 4)$. A cada esquina, ele escolhe aleatoriamente uma das 
+quatro direções cardeais segundo as probabilidades descritas na @tbl-probs.
+
+| Direção | Vetor de deslocamento | Probabilidade |
+|:-------:|:---------------------:|:-------------:|
+| Leste   | $(+1,\; 0)$           | $0{,}35$      |
+| Norte   | $(0,\; +1)$           | $0{,}45$      |
+| Sul     | $(0,\; -1)$           | $0{,}10$      |
+| Oeste   | $(-1,\; 0)$           | $0{,}10$      |
+
+: Probabilidades de deslocamento em cada direção. {#tbl-probs}
+
+Além do movimento propriamente dito, o modelo incorpora dois componentes de tempo:
+
+- **Tempo de deslocamento:** cada quadra percorrida consome $5$ minutos.
+- **Tempo de decisão:** com probabilidade $0{,}30$, ao chegar a uma esquina, o indivíduo 
+  demora $1$ minuto adicional antes de escolher a próxima direção.
+
+O processo termina em uma de duas situações: (i) o indivíduo alcança o destino $(3, 4)$, 
+ou (ii) o tempo total acumulado atinge ou ultrapassa o limite máximo estabelecido para a tentativa.
+O modelo é uma Cadeia de Markov em $\mathbb{Z}^2$: a decisão em cada esquina depende apenas 
+da posição atual, não da trajetória anterior. Como $P(T \leq 60)$ não tem forma fechada, 
+a estimativa é feita por Monte Carlo com $N = 100.000$ replicações independentes. A @fig-mapa ilustra a malha urbana e as probabilidades de movimento.
+
+## Análise do Espaço de Soluções
+
+### Tempo mínimo possível de chegada
+
+A distância de Manhattan entre origem e destino é $|3| + |4| = 7$ quadras, logo o caminho 
+mais curto possível leva:
+
+$$t_{\min} = 7 \times 5 = 35 \text{ minutos}$$
+
+Esse valor exige $3$ passos para leste e $4$ para norte em sequência direta, sem nenhum 
+atraso de decisão — evento possível mas de probabilidade muito baixa. Qualquer passo para 
+sul ou oeste aumenta o total em pelo menos dois passos. Portanto, $35$ minutos é o 
+**limite inferior absoluto** do tempo de chegada.
+
+### Estrutura dos caminhos possíveis
+
+Seja uma trajetória qualquer de chegada ao destino composta por $n_L$, $n_N$, $n_S$ e 
+$n_O$ passos nas direções leste, norte, sul e oeste, respectivamente. Para que o bêbado 
+chegue exatamente em $(3, 4)$ partindo de $(0, 0)$, é necessário satisfazer o sistema:
+
+$$\begin{cases} n_L - n_O = 3 \\ n_N - n_S = 4 \end{cases}$$
+
+O número **total** de passos de um caminho de chegada é:
+
+$$n = n_L + n_N + n_S + n_O = (n_O + 3) + (n_S + 4) + n_S + n_O = 7 + 2n_S + 2n_O$$
+
+Como $n_S, n_O \geq 0$ e são inteiros, conclui-se que:
+
+$$n \in \{7,\, 9,\, 11,\, 13,\, \ldots\}$$
+
+Ou seja, **o número de passos de qualquer trajetória de chegada é sempre ímpar e pelo menos 
+igual a 7**. Cada passo para sul ou oeste "desperdiçado" exige um passo compensatório extra, 
+de modo que desvios do caminho mínimo aumentam o total de passos sempre de **dois em dois**.
+
+### Estrutura discreta dos tempos de chegada
+
+Dado um caminho com $n = 7 + 2j$ passos ($j = 0, 1, 2, \ldots$), o tempo total acumulado 
+é composto por:
+
+- **Tempo de deslocamento:** $5n = 5(7 + 2j) = 35 + 10j$ minutos.
+- **Tempo de decisão:** cada uma das $n$ esquinas visitadas gera um atraso de $1$ minuto 
+  com probabilidade $0{,}30$, independentemente. Se $d$ dessas esquinas causam atraso 
+  ($0 \leq d \leq n$), o custo adicional é $d$ minutos.
+
+O tempo de chegada de uma trajetória com $j$ desvios (ou seja, $2j$ passos extras) e $d$ atrasos é portanto:
+
+$$t = 35 + 10j + d, \quad j \in \{0, 1, 2, \ldots\},\quad d \in \{0, 1, \ldots, 7 + 2j\}$$
+
+Isso implica que os tempos possíveis de chegada **não são arbitrários**: eles formam 
+famílias de inteiros separadas por múltiplos de $10$, com sobreposição parcial entre 
+famílias adjacentes quando $d$ é grande. A @tbl-familias exemplifica as primeiras famílias:
+
+| Passos ($n$) | $j$ | Intervalo de $t$ possível |
+|:---:|:---:|:---:|
+| 7  | 0 | $[35,\; 42]$ |
+| 9  | 1 | $[45,\; 54]$ |
+| 11 | 2 | $[55,\; 66]$ |
+| 13 | 3 | $[65,\; 78]$ |
+
+: Famílias de tempos de chegada por número de passos. {#tbl-familias}
+
+Note que entre $43$ e $44$ minutos **não há chegadas possíveis**: é um "vazio" estrutural 
+entre a família $j=0$ e $j=1$. A partir de $j=2$ e $j=3$, as famílias começam a se 
+sobrepor (ex.: $t = 65$ é atingível tanto com $j=2, d=10$ quanto com $j=3, d=0$). Essa 
+estrutura **prediz a forma multimodal** da distribuição de tempos observada nas simulações 
+da Seção 3.4 — os picos visíveis no histograma correspondem às modas de cada família. A @fig-familias exibe graficamente os tempos possíveis para as primeiras cinco famílias.
+
+### Probabilidade do caminho mínimo
+
+O caminho mais curto ($j=0$, sem desvios) exige exatamente $3$ passos para leste e $4$ 
+para norte, em qualquer ordem, sem nenhum passo para sul ou oeste. O número de sequências 
+distintas com essa restrição é $\binom{7}{3} = 35$. A probabilidade de cada sequência 
+específica de $3$ lestes e $4$ nortes (sem atrasos) é:
+
+$$P(\text{sequência mínima sem atraso}) = 0{,}35^3 \times 0{,}45^4 \times 0{,}70^7$$
+
+E a probabilidade de chegar pelo caminho mínimo em exatamente $t = 35$ minutos é:
+
+$$P(t = 35) = \binom{7}{3} \times 0{,}35^3 \times 0{,}45^4 \times 0{,}70^7 
+= 35 \times 0{,}042875 \times 0{,}041006 \times 0{,}082354 \approx 0{,}005$$
+
+```{r fig-familias, echo=FALSE, fig.cap="Famílias de tempos de chegada por número de passos (j). Cores distintas indicam famílias diferentes; a sobreposição entre j=2 e j=3 é visível a partir de t=65.", fig.height=3.5}
+familias <- lapply(0:4, function(j) {
+  n <- 7 + 2 * j
+  data.frame(t = seq(35 + 10*j, 35 + 10*j + n), j = factor(paste0("j = ", j)))
+})
+familias_df <- do.call(rbind, familias)
+
+ggplot(familias_df, aes(x = t, y = j, color = j)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  scale_color_brewer(palette = "Set1", name = "Família") +
+  labs(x = "Tempo de chegada (min)", y = "Passos extras (j)",
+       caption = "Cada ponto representa um tempo de chegada teoricamente possível.") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "right", panel.grid.minor = element_blank())
+```
+
+
+```{r fig-mapa, echo=FALSE, fig.cap="Malha urbana com ponto de partida (verde), destino (vermelho) e probabilidades de cada direção.", fig.height=4.5}
+
+# Setas e probabilidades a partir da origem
+movimentos <- data.frame(
+  x    = 0, y = 0,
+  xend = c(1, 0, 0, -1),
+  yend = c(0, 1, -1, 0),
+  dir  = c("Leste (0,35)", "Norte (0,45)", "Sul (0,10)", "Oeste (0,10)")
+)
+
+pontos <- data.frame(
+  x    = c(0, 3),
+  y    = c(0, 4),
+  tipo = c("Partida (0,0)", "Destino (3,4)")
+)
+
+ggplot() +
+  geom_vline(xintercept = -1:4, color = "grey85", linewidth = 0.4) +
+  geom_hline(yintercept = -1:5, color = "grey85", linewidth = 0.4) +
+  geom_segment(
+    data = movimentos,
+    aes(x = x, y = y, xend = xend, yend = yend, color = dir),
+    arrow = arrow(length = unit(0.18, "inches"), type = "closed"),
+    linewidth = 1.1
+  ) +
+  geom_point(
+    data = pontos, 
+    aes(x = x, y = y, shape = tipo, fill = tipo),
+    size = 4, color = "black", stroke = 0.5
+  ) +
+  geom_text(
+    data = pontos, aes(x = x, y = y, label = tipo),
+    vjust = -1, size = 3.2
+  ) +
+  scale_color_brewer(palette = "Dark2", name = "Direção") +
+  scale_shape_manual(
+    values = c("Partida (0,0)" = 24, "Destino (3,4)" = 21),
+    name = "Pontos"
+  ) +
+  scale_fill_manual(
+    values = c("Partida (0,0)" = "forestgreen", "Destino (3,4)" = "firebrick"),
+    name = "Pontos"
+  ) +
+  coord_fixed(xlim = c(-1.5, 4.5), ylim = c(-1.5, 5.5)) +
+  labs(x = "x", y = "y") +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position  = "right",
+    panel.grid.major = element_blank()
+  )
+```
+# Simulação Interativa
+
+Antes de rodar 100 mil tentativas, veja um bêbado andando de verdade: um passo de cada vez,
+com o tempo acumulando em tempo real. Quando a simulação terminar, o botão vermelho roda
+100.000 tentativas instantaneamente e exibe o mapa de calor de posições visitadas.
+
+```{=html}
+<div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:10px;padding:1.4rem 1.6rem;margin:1.5rem 0;font-family:sans-serif;">
+  <h4 style="margin:0 0 1.1rem;color:#2c3e50;font-size:1.15rem;">🚶 Simulação interativa — O Bêbado ao Vivo</h4>
+
+  <div style="display:flex;gap:1.8rem;flex-wrap:wrap;align-items:flex-start;">
+
+    <!-- Canvas + stats -->
+    <div style="flex:0 0 auto;">
+      <canvas id="bebSimCanvas"
+              style="border:1px solid #ccc;border-radius:6px;background:white;display:block;box-shadow:0 2px 6px rgba(0,0,0,0.08);"></canvas>
+
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <div style="flex:1;background:#ecf0f1;border-radius:6px;padding:0.45rem 0.7rem;">
+          <div style="font-size:11px;color:#7f8c8d;">Posição</div>
+          <div id="bebSPos" style="font-size:20px;font-weight:600;color:#2c3e50;font-variant-numeric:tabular-nums;">(0, 0)</div>
+        </div>
+        <div style="flex:1;background:#ecf0f1;border-radius:6px;padding:0.45rem 0.7rem;">
+          <div style="font-size:11px;color:#7f8c8d;">Tempo</div>
+          <div id="bebSTempo" style="font-size:20px;font-weight:600;color:#2c3e50;font-variant-numeric:tabular-nums;">0 min</div>
+        </div>
+        <div style="flex:1;background:#ecf0f1;border-radius:6px;padding:0.45rem 0.7rem;">
+          <div style="font-size:11px;color:#7f8c8d;">Passos</div>
+          <div id="bebSPassos" style="font-size:20px;font-weight:600;color:#2c3e50;font-variant-numeric:tabular-nums;">0</div>
+        </div>
+      </div>
+
+      <div id="bebStatus"
+           style="margin-top:8px;padding:0.5rem 0.9rem;background:white;border:1px solid #dee2e6;border-radius:5px;font-size:0.9rem;min-height:2rem;display:flex;align-items:center;">
+        Clique em <strong style="margin:0 4px;">Iniciar</strong> para começar, ou no botão vermelho para o mapa de calor.
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div style="min-width:250px;flex:1;display:flex;flex-direction:column;gap:0.9rem;">
+
+      <!-- Simulação ao vivo -->
+      <div style="background:white;border:1px solid #dee2e6;border-radius:8px;padding:0.8rem 1rem;">
+        <div style="font-size:11px;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.6rem;">Simulação ao vivo</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <span style="font-size:0.9rem;color:#555;min-width:100px;">⏱ T. máximo</span>
+          <input type="range" id="bebTmax" min="35" max="180" value="60" step="5" style="flex:1;">
+          <span id="bebTmaxVal" style="font-size:0.9rem;font-weight:600;color:#2c3e50;min-width:50px;text-align:right;">60 min</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <span style="font-size:0.9rem;color:#555;min-width:100px;">⚡ Velocidade</span>
+          <input type="range" id="bebVel" min="1" max="10" value="5" style="flex:1;">
+          <span id="bebVelVal" style="font-size:0.9rem;font-weight:600;color:#2c3e50;min-width:50px;text-align:right;">5</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button id="bebStart"
+                  style="flex:1;padding:0.5rem;background:#2980b9;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.9rem;font-weight:bold;">
+            ▶ Iniciar
+          </button>
+          <button id="bebNew"
+                  style="flex:1;padding:0.5rem;background:#7f8c8d;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.9rem;">
+            🔄 Nova tentativa
+          </button>
+        </div>
+      </div>
+
+      <!-- Probabilidades -->
+      <div style="background:white;border:1px solid #dee2e6;border-radius:8px;padding:0.8rem 1rem;">
+        <div style="font-size:11px;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.6rem;">Probabilidades de direção</div>
+        <div style="display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:5px 8px;">
+          <span style="font-size:0.9rem;color:#555;">→ Direita</span>
+          <input type="range" id="pD" min="0" max="100" value="35" step="1">
+          <span id="vD" style="font-size:0.9rem;font-weight:600;color:#2c3e50;min-width:38px;text-align:right;">35%</span>
+
+          <span style="font-size:0.9rem;color:#555;">↑ Cima</span>
+          <input type="range" id="pC" min="0" max="100" value="45" step="1">
+          <span id="vC" style="font-size:0.9rem;font-weight:600;color:#2c3e50;min-width:38px;text-align:right;">45%</span>
+
+          <span style="font-size:0.9rem;color:#555;">↓ Baixo</span>
+          <input type="range" id="pB" min="0" max="100" value="10" step="1">
+          <span id="vB" style="font-size:0.9rem;font-weight:600;color:#2c3e50;min-width:38px;text-align:right;">10%</span>
+
+          <span style="font-size:0.9rem;color:#555;">← Esquerda</span>
+          <input type="range" id="pE" min="0" max="100" value="10" step="1">
+          <span id="vE" style="font-size:0.9rem;font-weight:600;color:#2c3e50;min-width:38px;text-align:right;">10%</span>
+        </div>
+        <div id="bebProbTotal"
+             style="margin-top:6px;font-size:0.85rem;padding:4px 8px;border-radius:4px;text-align:center;background:#eafaf1;color:#1e8449;">
+          Total: 100%
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;">
+          <button onclick="bebSetPreset(35,45,10,10)" style="font-size:0.78rem;padding:3px 8px;border:1px solid #ccc;border-radius:4px;background:white;cursor:pointer;">Original</button>
+          <button onclick="bebSetPreset(25,25,25,25)" style="font-size:0.78rem;padding:3px 8px;border:1px solid #ccc;border-radius:4px;background:white;cursor:pointer;">Uniforme</button>
+          <button onclick="bebSetPreset(20,60,10,10)" style="font-size:0.78rem;padding:3px 8px;border:1px solid #ccc;border-radius:4px;background:white;cursor:pointer;">Viés ↑</button>
+          <button onclick="bebSetPreset(50,25,15,10)" style="font-size:0.78rem;padding:3px 8px;border:1px solid #ccc;border-radius:4px;background:white;cursor:pointer;">Viés →</button>
+          <button onclick="bebSetPreset(10,10,40,40)" style="font-size:0.78rem;padding:3px 8px;border:1px solid #ccc;border-radius:4px;background:white;cursor:pointer;">Viés ↓←</button>
+        </div>
+      </div>
+
+      <!-- 100k -->
+      <div style="background:white;border:1px solid #dee2e6;border-radius:8px;padding:0.8rem 1rem;">
+        <div style="font-size:11px;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.6rem;">Mapa de calor — 100.000 tentativas</div>
+        <button id="bebRun100k"
+                style="width:100%;padding:0.55rem;background:#c0392b;color:white;border:none;border-radius:5px;cursor:pointer;font-size:0.9rem;font-weight:bold;">
+          🗺 Rodar 100.000 tentativas
+        </button>
+        <div id="bebResult" style="margin-top:6px;font-size:0.85rem;color:#444;line-height:1.6;"></div>
+      </div>
+
+      <!-- Legenda -->
+      <div style="background:white;border:1px solid #dee2e6;border-radius:8px;padding:0.8rem 1rem;">
+        <div style="font-size:11px;color:#7f8c8d;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">Legenda</div>
+        <div id="bebLegendaSingle" style="font-size:0.85rem;color:#555;line-height:1.9;">
+          <span style="color:#27ae60;">●</span> O = Origem (0,0) &nbsp;
+          <span style="color:#e74c3c;">●</span> D = Destino (3,4)<br>
+          <span style="color:#3498db;">●</span> andando &nbsp;
+          <span style="color:#f39c12;">●</span> chegou &nbsp;
+          <span style="color:#95a5a6;">●</span> tempo esgotado
+        </div>
+        <div id="bebLegendaCalor" style="display:none;font-size:0.85rem;color:#555;line-height:1.9;">
+          <span style="color:#1a5276;">■</span> raramente visitado &nbsp;→&nbsp;
+          <span style="color:#e74c3c;">■</span> muito visitado<br>
+          <span style="color:#27ae60;">●</span> Origem &nbsp;
+          <span style="color:#e74c3c;">●</span> Destino
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var GX_MIN = -5, GX_MAX = 9, GY_MIN = -5, GY_MAX = 9;
+  var CELL = 48, MARGIN = 30;
+  var CW = (GX_MAX - GX_MIN) * CELL + 2 * MARGIN;
+  var CH = (GY_MAX - GY_MIN) * CELL + 2 * MARGIN;
+
+  function px(gx, gy) {
+    return [MARGIN + (gx - GX_MIN) * CELL,
+            CH - MARGIN - (gy - GY_MIN) * CELL];
+  }
+
+  var canvas   = document.getElementById('bebSimCanvas');
+  var ctx      = canvas.getContext('2d');
+  canvas.width = CW; canvas.height = CH;
+
+  var startBtn    = document.getElementById('bebStart');
+  var newBtn      = document.getElementById('bebNew');
+  var tmaxEl      = document.getElementById('bebTmax');
+  var tmaxLbl     = document.getElementById('bebTmaxVal');
+  var velEl       = document.getElementById('bebVel');
+  var velLbl      = document.getElementById('bebVelVal');
+  var statusEl    = document.getElementById('bebStatus');
+  var run100kBtn  = document.getElementById('bebRun100k');
+  var resultEl    = document.getElementById('bebResult');
+  var legSingle   = document.getElementById('bebLegendaSingle');
+  var legCalor    = document.getElementById('bebLegendaCalor');
+  var probTotal   = document.getElementById('bebProbTotal');
+
+  var pIds = ['pD','pC','pB','pE'];
+  var vIds = ['vD','vC','vB','vE'];
+  var dirs = [[1,0],[0,1],[0,-1],[-1,0]];
+
+  var pos, tempo, passos, trail, done, chegou, running, animTimer;
+  var massMode = false, heatmap = null;
+
+  function getProbs() {
+    return pIds.map(function(id){ return parseFloat(document.getElementById(id).value); });
+  }
+
+  function sampleDir() {
+    var p = getProbs(), s = p[0]+p[1]+p[2]+p[3], r = Math.random()*s, acc = 0;
+    for (var i = 0; i < 4; i++) { acc += p[i]; if (r < acc) return dirs[i]; }
+    return dirs[3];
+  }
+
+  function init() {
+    massMode = false;
+    pos = [0,0]; tempo = 0; passos = 0; trail = [[0,0]];
+    done = false; chegou = false; running = false;
+    clearTimeout(animTimer);
+    startBtn.textContent = '▶ Iniciar';
+    legSingle.style.display = 'block';
+    legCalor.style.display  = 'none';
+    updateStats();
+    statusEl.innerHTML = 'Clique em <strong>Iniciar</strong> para começar, ou no botão vermelho para o mapa de calor.';
+    draw();
+  }
+
+  function updateStats() {
+    document.getElementById('bebSPos').textContent    = '(' + pos[0] + ', ' + pos[1] + ')';
+    document.getElementById('bebSTempo').textContent  = tempo + ' min';
+    document.getElementById('bebSPassos').textContent = passos;
+  }
+
+  function step() {
+    if (done) return;
+    var tmax = parseInt(tmaxEl.value);
+    if (Math.random() > 0.7) tempo += 1;
+    var d = sampleDir();
+    pos = [pos[0] + d[0], pos[1] + d[1]];
+    tempo += 5; passos++;
+    trail.push(pos.slice());
+    if (pos[0] === 3 && pos[1] === 4) { done = true; chegou = true; }
+    else if (tempo >= tmax)            { done = true; chegou = false; }
+    updateStats(); draw();
+    if (done) {
+      running = false;
+      startBtn.textContent = '▶ Iniciar';
+      if (chegou)
+        statusEl.innerHTML = '<span style="color:#27ae60;font-weight:bold">✓ Chegou em casa!</span> &nbsp; Tempo total: <strong>' + tempo + ' min</strong>';
+      else
+        statusEl.innerHTML = '<span style="color:#e74c3c;font-weight:bold">✗ Tempo esgotado</span> &nbsp; Última pos: (' + pos[0] + ', ' + pos[1] + ')';
+    }
+  }
+
+  function animate() {
+    if (!running || done) return;
+    step();
+    if (!done) {
+      var sp = parseInt(velEl.value);
+      animTimer = setTimeout(animate, Math.max(25, 560 - sp * 52));
+    }
+  }
+
+  function drawGrid() {
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 0.8;
+    var gx, gy, a, b;
+    for (gx = GX_MIN; gx <= GX_MAX; gx++) {
+      a = px(gx, GY_MIN); b = px(gx, GY_MAX);
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+    }
+    for (gy = GY_MIN; gy <= GY_MAX; gy++) {
+      a = px(GX_MIN, gy); b = px(GX_MAX, gy);
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+    }
+    ctx.fillStyle = '#bbb'; ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    for (gx = GX_MIN; gx <= GX_MAX; gx += 2) {
+      var lp = px(gx, GY_MIN); ctx.fillText(gx, lp[0], lp[1] + 14);
+    }
+    ctx.textAlign = 'right';
+    for (gy = GY_MIN; gy <= GY_MAX; gy += 2) {
+      var lp2 = px(GX_MIN, gy); ctx.fillText(gy, lp2[0] - 4, lp2[1] + 4);
+    }
+  }
+
+  function drawMarkers(r) {
+    var o = px(0,0), d = px(3,4);
+    ctx.fillStyle = '#27ae60';
+    ctx.beginPath(); ctx.arc(o[0],o[1],r,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle = 'white'; ctx.font = 'bold ' + (r*0.85|0) + 'px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('O', o[0], o[1] + (r*0.35|0));
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath(); ctx.arc(d[0],d[1],r,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle = 'white'; ctx.font = 'bold ' + (r*0.85|0) + 'px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('D', d[0], d[1] + (r*0.35|0));
+  }
+
+  function draw() {
+    if (massMode) { drawHeatmap(); return; }
+    ctx.clearRect(0, 0, CW, CH);
+    drawGrid();
+    if (trail.length > 1) {
+      ctx.strokeStyle = 'rgba(52,152,219,0.4)'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      var t0 = px(trail[0][0], trail[0][1]); ctx.moveTo(t0[0], t0[1]);
+      for (var i = 1; i < trail.length; i++) {
+        var ti = px(trail[i][0], trail[i][1]); ctx.lineTo(ti[0], ti[1]);
+      }
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(52,152,219,0.25)';
+      for (var j = 1; j < trail.length - 1; j++) {
+        var tj = px(trail[j][0], trail[j][1]);
+        ctx.beginPath(); ctx.arc(tj[0], tj[1], 3, 0, 2*Math.PI); ctx.fill();
+      }
+    }
+    drawMarkers(11);
+    var cp = px(pos[0], pos[1]);
+    ctx.fillStyle = done ? (chegou ? '#f39c12' : '#95a5a6') : '#3498db';
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cp[0], cp[1], 13, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
+    ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(done ? (chegou ? '\uD83C\uDFE0' : '\uD83D\uDE35') : '\uD83D\uDEB6', cp[0], cp[1] + 5);
+  }
+
+  function heatColor(t) {
+    var r, g, b;
+    if (t < 0.25) {
+      var s = t / 0.25;
+      r = 20; g = (60 + s*100)|0; b = (180 + s*50)|0;
+    } else if (t < 0.55) {
+      var s = (t - 0.25) / 0.30;
+      r = (s*230)|0; g = (160 + s*70)|0; b = (230 - s*230)|0;
+    } else {
+      var s = (t - 0.55) / 0.45;
+      r = (230 + s*25)|0; g = (230 - s*220)|0; b = 0;
+    }
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  function drawHeatmap() {
+    if (!heatmap) return;
+    ctx.clearRect(0, 0, CW, CH);
+    var NX = GX_MAX - GX_MIN + 1, NY = GY_MAX - GY_MIN + 1, maxC = 0;
+    for (var ix = 0; ix < NX; ix++)
+      for (var iy = 0; iy < NY; iy++) {
+        if (ix+GX_MIN===0 && iy+GY_MIN===0) continue;
+        if (heatmap[ix][iy] > maxC) maxC = heatmap[ix][iy];
+      }
+    for (var ix = 0; ix < NX; ix++)
+      for (var iy = 0; iy < NY; iy++) {
+        var c = heatmap[ix][iy]; if (!c) continue;
+        var gx2 = ix + GX_MIN, gy2 = iy + GY_MIN;
+        if (gx2===0 && gy2===0) continue;
+        var t = Math.pow(c / maxC, 0.45), alpha = 0.18 + t*0.78;
+        var top = px(gx2, gy2+1);
+        ctx.fillStyle = heatColor(t); ctx.globalAlpha = alpha;
+        ctx.fillRect(top[0], top[1], CELL, CELL);
+        ctx.globalAlpha = 1;
+      }
+    drawGrid(); drawMarkers(13);
+    var di = 3-GX_MIN, dj = 4-GY_MIN, dc = heatmap[di][dj], dpt = px(3,4);
+    ctx.fillStyle = '#2c3e50'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(dc.toLocaleString('pt-BR') + ' chegadas', dpt[0], dpt[1] - 18);
+  }
+
+  startBtn.addEventListener('click', function () {
+    if (massMode) { init(); return; }
+    if (done) return;
+    running = !running;
+    this.textContent = running ? '⏸ Pausar' : '▶ Continuar';
+    if (running) animate(); else clearTimeout(animTimer);
+  });
+
+  newBtn.addEventListener('click', init);
+  tmaxEl.addEventListener('input', function () { tmaxLbl.textContent = this.value + ' min'; });
+  velEl .addEventListener('input', function () { velLbl .textContent = this.value; });
+
+  pIds.forEach(function (id, idx) {
+    document.getElementById(id).addEventListener('input', function () {
+      var vals = pIds.map(function(x){ return parseFloat(document.getElementById(x).value); });
+      var s = vals.reduce(function(a,b){ return a+b; }, 0);
+      vIds.forEach(function(vid, i){ document.getElementById(vid).textContent = vals[i] + '%'; });
+      probTotal.textContent = 'Total: ' + s + '%';
+      if (Math.abs(s - 100) < 0.5) {
+        probTotal.style.background = '#eafaf1'; probTotal.style.color = '#1e8449';
+      } else {
+        probTotal.style.background = '#fef9e7'; probTotal.style.color = '#b7950b';
+      }
+    });
+  });
+
+  window.bebSetPreset = function (d, c, b, e) {
+    var vs = [d, c, b, e];
+    pIds.forEach(function(id, i){
+      document.getElementById(id).value = vs[i];
+      document.getElementById(vIds[i]).textContent = vs[i] + '%';
+    });
+    probTotal.textContent = 'Total: 100%';
+    probTotal.style.background = '#eafaf1'; probTotal.style.color = '#1e8449';
+  };
+
+  run100kBtn.addEventListener('click', function () {
+    var p = getProbs(), s = p[0]+p[1]+p[2]+p[3];
+    if (Math.abs(s - 100) > 0.5) {
+      resultEl.innerHTML = '<span style="color:#e74c3c;">As probabilidades devem somar 100% (atual: ' + s + '%)</span>';
+      return;
+    }
+    var btn = this;
+    btn.disabled = true; btn.textContent = '⏳ Simulando 100.000 tentativas...';
+    clearTimeout(animTimer); running = false;
+    var tmax = parseInt(tmaxEl.value);
+    var N = 100000, NX = GX_MAX-GX_MIN+1, NY = GY_MAX-GY_MIN+1;
+    heatmap = [];
+    for (var ix = 0; ix < NX; ix++) heatmap[ix] = new Int32Array(NY);
+    setTimeout(function () {
+      var nArr = 0, tSum = 0;
+      var ps = [p[0]/s, p[0]/s+p[1]/s, p[0]/s+p[1]/s+p[2]/s];
+      for (var i = 0; i < N; i++) {
+        var pp = [0,0], t = 0, arr = false;
+        var ox = 0-GX_MIN, oy = 0-GY_MIN;
+        if (ox>=0&&ox<NX&&oy>=0&&oy<NY) heatmap[ox][oy]++;
+        while (true) {
+          if (Math.random() > 0.7) t += 1;
+          var r = Math.random(), dx, dy;
+          if (r < ps[0])       { dx=1;  dy=0;  }
+          else if (r < ps[1])  { dx=0;  dy=1;  }
+          else if (r < ps[2])  { dx=0;  dy=-1; }
+          else                 { dx=-1; dy=0;  }
+          pp = [pp[0]+dx, pp[1]+dy]; t += 5;
+          var bx = pp[0]-GX_MIN, by = pp[1]-GY_MIN;
+          if (bx>=0&&bx<NX&&by>=0&&by<NY) heatmap[bx][by]++;
+          if (pp[0]===3 && pp[1]===4) { arr = true; break; }
+          if (t >= tmax) break;
+        }
+        if (arr) { nArr++; tSum += t; }
+      }
+      var pHat = nArr/N, ep = Math.sqrt(pHat*(1-pHat)/N);
+      var tMed = nArr > 0 ? (tSum/nArr).toFixed(1) : '—';
+      resultEl.innerHTML =
+        '<strong>' + nArr.toLocaleString('pt-BR') + '</strong> chegadas &nbsp;|&nbsp; ' +
+        '<strong>p̂ = ' + (pHat*100).toFixed(2) + '%</strong> (EP = ' + ep.toFixed(5) + ')' +
+        '<br>Tempo médio de chegada: <strong>' + tMed + ' min</strong>';
+      massMode = true;
+      legSingle.style.display = 'none';
+      legCalor.style.display  = 'block';
+      startBtn.textContent = '↩ Voltar à simulação';
+      statusEl.innerHTML = '🗺 Mapa de calor: quanto mais quente a cor, mais vezes o bêbado passou por aquela esquina.';
+      drawHeatmap();
+      btn.disabled = false;
+      btn.textContent = '🔁 Rodar novamente';
+    }, 20);
+  });
+
+  init();
+}());
+</script>
+
+```
+
+
+# Implementação e Análise
+
+## Função de Simulação
+
+A função `simular_bebado()` centraliza a lógica do modelo. A chegada é verificada antes 
+do critério de tempo para garantir o registro exato do instante de parada, e o armazenamento 
+da trajetória (`guardar_traj = TRUE`) é desativado por padrão para otimização de memória.
+
+```{r funcao-simulacao}
+# Parâmetros globais do problema
+DESTINO       <- c(3, 4)
+TEMPO_QUADRA  <- 5   
+TEMPO_DECISAO <- 1   
+P_SEM_ATRASO  <- 0.7
+PROBS_DIR   <- c(leste = 0.35, norte = 0.45, sul = 0.10, oeste = 0.10)
+DELTAS <- list(
+  leste  = c( 1L,  0L),
+  norte  = c( 0L,  1L),
+  sul    = c( 0L, -1L),
+  oeste  = c(-1L,  0L)
+)
+DIRS        <- names(DELTAS)
+
+# Função principal
+#
+# Simula uma tentativa do bêbado.
+#
+# Argumentos:
+#   tempo_max    : limite de tempo em minutos (critério de parada)
+#   guardar_traj : se TRUE, armazena todas as coordenadas visitadas
+#
+# Retorna uma lista com:
+#   $chegou  : logical — TRUE se o destino foi alcançado
+#   $tempo   : numeric — tempo acumulado ao encerrar a tentativa
+#   $traj    : matriz Nx2 com as coordenadas (apenas se guardar_traj = TRUE)
+
+simular_bebado <- function(tempo_max, guardar_traj = FALSE) {
+  pos   <- c(0L, 0L)
+  tempo <- 0
+
+  # pré-aloca trajetória só quando necessário
+  if (guardar_traj) {
+    traj        <- matrix(0L, nrow = 500L, ncol = 2L)
+    traj[1L, ]  <- pos
+    passo_traj  <- 1L
+  }
+
+  repeat {
+    # atraso de decisão (30% das esquinas)
+    if (runif(1L) > P_SEM_ATRASO) tempo <- tempo + TEMPO_DECISAO
+
+    # escolhe direção e avança
+    dir <- sample(DIRS, 1L, prob = PROBS_DIR[DIRS])
+    pos <- pos + DELTAS[[dir]]
+    tempo <- tempo + TEMPO_QUADRA
+
+    # salva posição se modo trajetória
+    if (guardar_traj) {
+      passo_traj         <- passo_traj + 1L
+      traj[passo_traj, ] <- pos
+    }
+
+    # verifica chegada antes do limite de tempo
+    if (pos[1L] == DESTINO[1L] && pos[2L] == DESTINO[2L]) {
+      return(list(
+        chegou = TRUE,
+        tempo  = tempo,
+        traj   = if (guardar_traj) traj[seq_len(passo_traj), , drop = FALSE] else NULL
+      ))
+    }
+
+    # critério de parada por tempo
+    if (tempo >= tempo_max) {
+      return(list(
+        chegou = FALSE,
+        tempo  = tempo,
+        traj   = if (guardar_traj) traj[seq_len(passo_traj), , drop = FALSE] else NULL
+      ))
+    }
+  }
+}
+```
+
+### Execução das $N = 100.000$ simulações
+
+As simulações principais são executadas uma única vez e armazenadas em `resultados`. 
+Todas as seções seguintes consomem esse mesmo objeto, sem re-simular.
+
+```{r simulacao-principal, cache=TRUE}
+N         <- 100000L
+TEMPO_MAX <- 180
+
+resultados <- replicate(N, simular_bebado(TEMPO_MAX), simplify = FALSE)
+
+chegou <- vapply(resultados, `[[`, logical(1L),  "chegou")
+tempo  <- vapply(resultados, `[[`, numeric(1L),  "tempo")
+```
+
+### Verificação de Sanidade
+
+Antes de qualquer análise, verificamos se a simulação se comporta como esperado com base 
+na teoria da Seção 1.2.
+
+```{r sanity-checks}
+tempos_chegada <- tempo[chegou]
+
+# P(t = 35) marginal: chegadas com t = 35 sobre TODAS as N simulações
+p35_sim <- mean(chegou & tempo == 35)
+p35_teo <- choose(7, 3) * 0.35^3 * 0.45^4 * 0.70^7
+
+# Criar data frame com os resultados
+sanity_df <- data.frame(
+  Verificação = c(
+    "Tempo mínimo de chegada",
+    "Chegadas com $t < 35$ min",
+    "Probabilidade $t = 35$ min",
+    "Taxa de chegada ($\\leq 60$ min)"
+  ),
+  Observado = c(
+    paste0(min(tempos_chegada), " min"),
+    paste0(sum(tempos_chegada < 35), " casos"),
+    sprintf("%.4f", p35_sim),
+    sprintf("%.1f\\%%", 100 * mean(chegou & tempo <= 60))  # filtro explícito: ≤ 60
+  ),
+  Esperado = c(
+    "$\\geq 35$ min",
+    "0 casos",
+    sprintf("%.4f", p35_teo),
+    "---"
+  ),
+  Status = c(
+    ifelse(min(tempos_chegada) >= 35, "$\\checkmark$", "$\\times$"),
+    ifelse(sum(tempos_chegada < 35) == 0, "$\\checkmark$", "$\\times$"),
+    ifelse(abs(p35_sim - p35_teo) < 0.001, "$\\checkmark$", "$\\times$"),
+    "---"
+  )
+)
+
+knitr::kable(
+  sanity_df,
+  align = c("l", "c", "c", "c"),
+  caption = "Verificação de sanidade dos resultados simulados.",
+  col.names = c("Verificação", "Observado", "Esperado", "Status"),
+  escape = FALSE
+)
+```
+
+## Estimativa de $P(\text{chegada} \leq 60 \text{ min})$
+
+O primeiro objetivo é estimar a probabilidade de o bêbado chegar em casa em até $60$ 
+minutos, acompanhada de uma medida de incerteza. O estimador pontual é a proporção 
+amostral $\hat{p} = k/N$, onde $k$ é o número de chegadas observadas nas $N$ simulações.
+
+### Estimativa e intervalos de confiança
+
+```{r estimativa-pontual}
+k     <- sum(chegou & tempo <= 60)
+p_hat <- mean(chegou & tempo <= 60)
+ep    <- sqrt(p_hat * (1 - p_hat) / N)
+```
+
+Das $N = 100.000$ simulações, $k = `r k`$ chegaram em até $60$ minutos, resultando em 
+$\hat{p} = `r sprintf("%.5f", p_hat)`$ com erro padrão $\text{EP} = `r sprintf("%.6f", ep)`$.
+
+O **intervalo de Wilson** — preferível ao intervalo normal clássico por ter cobertura mais 
+próxima do nível nominal para qualquer $\hat{p}$ — é obtido invertendo o teste de score de 
+proporção:
+
+$$\text{IC}_{95\%}^{\text{Wilson}} = \frac{\hat{p} + \frac{z^2}{2N} \pm 
+z\sqrt{\frac{\hat{p}(1-\hat{p})}{N} + \frac{z^2}{4N^2}}}{1 + \frac{z^2}{N}}$$
+
+```{r ic-wilson}
+wilson_ic <- function(p, n, conf = 0.95) {
+  z      <- qnorm(1 - (1 - conf) / 2)
+  denom  <- 1 + z^2 / n
+  centro <- (p + z^2 / (2 * n)) / denom
+  margem <- (z * sqrt(p * (1 - p) / n + z^2 / (4 * n^2))) / denom
+  c(inf = centro - margem, sup = centro + margem)
+}
+ic_wilson <- wilson_ic(p_hat, N)
+```
+
+O **Bootstrap não-paramétrico** reamostra os $N$ resultados binários com reposição $B = 10.000$ 
+vezes e calcula o IC pelos percentis $2{,}5\%$ e $97{,}5\%$:
+
+```{r ic-bootstrap, cache=TRUE}
+B        <- 10000L
+chegou_60 <- chegou & tempo <= 60
+p_boot   <- replicate(B, mean(sample(chegou_60, N, replace = TRUE)))
+ic_boot  <- quantile(p_boot, c(0.025, 0.975))
+ep_boot  <- sd(p_boot)
+```
+
+```{r tabela-comparacao, echo=FALSE}
+tab <- data.frame(
+  Método            = c("Wilson (95%)", "Bootstrap percentil (95%)"),
+  `Limite inferior` = unname(c(ic_wilson["inf"], ic_boot[1])),
+  `Limite superior` = unname(c(ic_wilson["sup"], ic_boot[2])),
+  Amplitude         = unname(c(
+    ic_wilson["sup"] - ic_wilson["inf"],
+    ic_boot[2]       - ic_boot[1]
+  )),
+  EP                = c(ep, ep_boot),
+  check.names = FALSE
+)
+
+knitr::kable(
+  tab, digits = 5, align = "lrrrr",
+  caption = "Comparação dos intervalos de confiança de 95% para $\\hat{p}$."
+)
+```
+
+```{r fig-ic, echo=FALSE, fig.cap="Distribuição bootstrap de $\\hat{p}^*$ com intervalos de confiança sobrepostos. A linha tracejada indica a estimativa pontual.", fig.height=3.5}
+ic_df <- data.frame(
+  metodo = c("Wilson", "Bootstrap"),
+  inf    = c(ic_wilson["inf"], ic_boot[1]),
+  sup    = c(ic_wilson["sup"], ic_boot[2])
+)
+
+ggplot(data.frame(p_boot), aes(x = p_boot)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 60, fill = "steelblue", alpha = 0.7, color = "white") +
+  geom_vline(xintercept = p_hat,
+             linetype = "dashed", linewidth = 0.8, color = "black") +
+  geom_errorbarh(
+    data = ic_df,
+    aes(xmin = inf, xmax = sup, y = -15, color = metodo),
+    height = 8, linewidth = 1.1, inherit.aes = FALSE
+  ) +
+  geom_point(
+    data = ic_df,
+    aes(x = (inf + sup) / 2, y = -15, color = metodo),
+    size = 2.5, inherit.aes = FALSE
+  ) +
+  scale_color_manual(
+    values = c("Wilson" = "firebrick", "Bootstrap" = "forestgreen"),
+    name   = "IC 95%"
+  ) +
+  annotate("text", x = p_hat, y = Inf,
+           label  = sprintf("p̂ = %.5f", p_hat),
+           vjust  = 2, hjust = -0.1, size = 3.5) +
+  labs(x = expression(hat(p)^"*"), y = "Densidade") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+Com $N = 100.000$, Wilson e Bootstrap convergem para limites praticamente idênticos — 
+a diferença de amplitude fica na quarta casa decimal.
+
+## Distribuição do Número de Chegadas em 100 Tentativas
+
+O segundo objetivo é obter a distribuição do **número de chegadas** quando se realizam 
+$m = 100$ tentativas independentes. Cada tentativa é um ensaio de Bernoulli com 
+probabilidade de sucesso $p = P(\text{chegada} \leq 60 \text{ min})$, estimada na seção 
+anterior. Como as tentativas são independentes entre si, o número de chegadas $K$ em 
+$m = 100$ tentativas segue uma distribuição **Binomial**:
+
+$$K \sim \text{Binomial}(m = 100,\; p)$$
+
+A simulação permite verificar empiricamente essa afirmação — e o ajuste entre a 
+distribuição simulada e a Binomial teórica serve como outro *sanity check* do modelo.
+
+### Simulação das 100 tentativas
+
+Reutilizamos os $N = 100.000$ resultados já simulados: basta reorganizá-los em 
+$N/m = 1.000$ grupos de $m = 100$ tentativas cada e contar os sucessos em cada grupo.
+
+```{r dist-100-tentativas}
+m         <- 100L                      # tentativas por grupo
+n_grupos  <- N %/% m                  # número de grupos = 1.000
+
+# reorganiza o vetor 'chegou' em matriz (m linhas × n_grupos colunas)
+# e soma cada coluna → número de chegadas por grupo
+chegadas_100 <- colSums(matrix(chegou & tempo <= 60, nrow = m))
+
+var_obs <- var(chegadas_100)
+var_teo <- m * p_hat * (1 - p_hat)
+
+dist_100_tbl <- data.frame(
+  Estatística = c(
+    "Número de grupos",
+    "Tentativas por grupo",
+    "Média observada",
+    "Média teórica ($m \\cdot \\hat{p}$)",
+    "Variância observada",
+    "Variância teórica ($m \\cdot \\hat{p} \\cdot (1-\\hat{p})$)",
+    "Desvio padrão observado",
+    "Erro padrão da média"
+  ),
+  Valor = c(
+    as.character(n_grupos),
+    as.character(m),
+    sprintf("%.3f", mean(chegadas_100)),
+    sprintf("%.3f", m * p_hat),
+    sprintf("%.3f", var_obs),
+    sprintf("%.3f", var_teo),
+    sprintf("%.3f", sd(chegadas_100)),
+    sprintf("%.3f", sd(chegadas_100) / sqrt(n_grupos))
+  )
+)
+
+knitr::kable(
+  dist_100_tbl,
+  align = c("l", "r"),
+  caption = "Estatísticas da distribuição do número de chegadas em 100 tentativas.",
+  col.names = c("Estatística", "Valor")
+) 
+```
+
+A variância teórica da $\text{Binomial}(m, p)$ é $m \cdot p \cdot (1-p)$. A comparação 
+com a variância observada é mais um *sanity check*: valores próximos indicam que o modelo 
+Binomial é adequado para descrever a distribuição empírica.
+
+### Estatísticas descritivas
+
+```{r desc-100,echo=FALSE}
+q_obs <- quantile(chegadas_100, probs = c(0.025, 0.25, 0.5, 0.75, 0.975))
+
+tab_desc <- data.frame(
+  Estatística = c("Mínimo", "P2,5%", "Q1 (25%)", "Mediana",
+                  "Q3 (75%)", "P97,5%", "Máximo", "Média", "DP"),
+  Observado   = c(min(chegadas_100), q_obs,
+                  max(chegadas_100), mean(chegadas_100), sd(chegadas_100)),
+  Teórico     = c(
+    qbinom(0,      m, p_hat),
+    qbinom(0.025,  m, p_hat),
+    qbinom(0.25,   m, p_hat),
+    qbinom(0.5,    m, p_hat),
+    qbinom(0.75,   m, p_hat),
+    qbinom(0.975,  m, p_hat),
+    qbinom(1,      m, p_hat),
+    m * p_hat,
+    sqrt(m * p_hat * (1 - p_hat))
+  )
+)
+
+knitr::kable(
+  tab_desc, digits = 3, align = "lrr",
+  caption = paste0(
+    "Estatísticas descritivas da distribuição simulada do número de chegadas ",
+    "em $m = 100$ tentativas versus referência Binomial$(100,\\, \\hat{p})$."
+  )
+)
+```
+
+### Ajuste à Binomial
+
+```{r fig-binom, echo=FALSE, fig.cap="Distribuição simulada do número de chegadas em 100 tentativas (barras) versus probabilidades da Binomial$(100, \\hat{p})$ teórica (pontos vermelhos). A linha tracejada indica a média teórica $m \\cdot \\hat{p}$.", fig.height=4}
+
+# grade de valores para a Binomial teórica
+k_seq   <- seq(min(chegadas_100), max(chegadas_100))
+binom_df <- data.frame(
+  k    = k_seq,
+  prob = dbinom(k_seq, size = m, prob = p_hat) * n_grupos  # escala para contagem
+)
+
+ggplot(data.frame(k = chegadas_100), aes(x = k)) +
+  geom_bar(fill = "steelblue", alpha = 0.75, width = 0.8) +
+  geom_point(
+    data = binom_df, aes(x = k, y = prob),
+    color = "firebrick", size = 2, inherit.aes = FALSE
+  ) +
+  geom_line(
+    data = binom_df, aes(x = k, y = prob),
+    color = "firebrick", linewidth = 0.6, linetype = "solid", inherit.aes = FALSE
+  ) +
+  geom_vline(
+    xintercept = m * p_hat,
+    linetype = "dashed", linewidth = 0.8, color = "black"
+  ) +
+  annotate(
+    "text", x = m * p_hat, y = Inf,
+    label  = sprintf("m·p̂ = %.1f", m * p_hat),
+    vjust  = 2, hjust = -0.1, size = 3.5
+  ) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  labs(
+    x = "Número de chegadas em 100 tentativas",
+    y = "Frequência observada (escala de contagem)",
+    caption = "Pontos vermelhos: frequência esperada pela Binomial(100, p̂)."
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+### Teste de aderência qui-quadrado
+
+Para formalizar a comparação entre a distribuição observada e a Binomial teórica, 
+aplicamos o teste de aderência qui-quadrado. Agrupamos as caudas para garantir frequências 
+esperadas $\geq 5$ em todas as classes.
+
+```{r teste-aderencia}
+k_full       <- 0:m
+obs_full     <- integer(m + 1L)
+names(obs_full) <- k_full
+
+obs_tab <- table(chegadas_100)
+# indexação por posição: k=0 → índice 1, k=j → índice j+1
+obs_full[as.integer(names(obs_tab)) + 1L] <- as.integer(obs_tab)
+
+esp_full <- dbinom(k_full, size = m, prob = p_hat) * n_grupos
+
+idx_inf <- min(which(cumsum(esp_full) >= 5))
+idx_sup <- length(esp_full) - min(which(rev(cumsum(rev(esp_full))) >= 5)) + 1L
+
+obs_freq_g <- c(
+  sum(obs_full[seq_len(idx_inf)]),
+  obs_full[(idx_inf + 1L):(idx_sup - 1L)],
+  sum(obs_full[idx_sup:length(obs_full)])
+)
+esp_freq_g <- c(
+  sum(esp_full[seq_len(idx_inf)]),
+  esp_full[(idx_inf + 1L):(idx_sup - 1L)],
+  sum(esp_full[idx_sup:length(esp_full)])
+)
+chi2_stat <- sum((obs_freq_g - esp_freq_g)^2 / esp_freq_g)
+# gl = nº de classes - 1 (restrição de soma) - 1 (p estimado das 100k simulações)
+# Tratar p_hat como parâmetro estimado é a opção conservadora; como ele vem de
+# uma amostra independente (não dos 1000 grupos), gl = k-1 seria igualmente defensável
+chi2_gl   <- length(obs_freq_g) - 2L  
+chi2_pval <- pchisq(chi2_stat, df = chi2_gl, lower.tail = FALSE)
+```
+
+```{r,echo=FALSE}
+# Tabela com resultados do teste
+aderencia_tbl <- data.frame(
+  Componente = c(
+    "Estatística $\\chi^2$",
+    "Graus de liberdade",
+    "p-valor",
+    "Nível de significância ($\\alpha$)",
+    "Conclusão"
+  ),
+  Valor = c(
+    sprintf("%.3f", chi2_stat),
+    as.character(chi2_gl),
+    sprintf("%.4f", chi2_pval),
+    "0.05",
+    if (chi2_pval > 0.05) {
+      "Não rejeita $H_0$: modelo Binomial adequado"
+    } else {
+      "Rejeita $H_0$: evidência contra o modelo Binomial"
+    }
+  )
+)
+
+knitr::kable(
+  aderencia_tbl,
+  align = c("l", "r"),
+  caption = "Resultado do teste de aderência qui-quadrado para a distribuição Binomial(100, $\\hat{p}$).",
+  col.names = c("Componente", "Valor"),
+  escape = FALSE
+)
+```
+
+O ajuste entre a distribuição simulada e a $\text{Binomial}(100, \hat{p})$ confirma que 
+as tentativas são efetivamente independentes e identicamente distribuídas no modelo — 
+propriedades que decorrem diretamente da estrutura de simulação adotada na Seção 3.1.
+
+## Distribuição dos Tempos de Chegada
+
+A distribuição de $T$ é analisada condicionalmente a $T \leq 60$ min — tempos registrados 
+em tentativas que expiraram não representam chegadas e não entram na distribuição.
+
+### Estrutura discreta confirmada
+
+A Seção 1.2 derivou que os tempos possíveis de chegada pertencem ao conjunto 
+$\{35 + 10j + d : j \geq 0,\; 0 \leq d \leq 7 + 2j\}$. Verificamos isso diretamente:
+
+```{r estrutura-tempos,echo=FALSE}
+# somente chegadas
+t_cheg   <- tempo[chegou & tempo <= 60]
+
+# valores únicos observados — devem ser todos ≥ 35
+t_unicos <- sort(unique(t_cheg))
+# Tabela com os primeiros tempos
+tempos_iniciais <- data.frame(
+  Posição = 1:15,
+  `Tempo (min)` = t_unicos[1:15],
+  check.names = FALSE
+)
+
+knitr::kable(
+  tempos_iniciais,
+  align = c("c", "c"),
+  caption = "Primeiros 15 tempos de chegada únicos observados.",
+  col.names = c("Posição", "Tempo (min)")
+) 
+
+# Estatísticas resumo
+estrutura_tbl <- data.frame(
+  Característica = c(
+    "Total de valores distintos",
+    "Tempo mínimo",
+    "Tempo máximo",
+    "Amplitude total",
+    "Tempos impossíveis ($43 \\leq t \\leq 44$)"
+  ),
+  Valor = c(
+    as.character(length(t_unicos)),
+    paste0(min(t_unicos), " min"),
+    paste0(max(t_unicos), " min"),
+    paste0(max(t_unicos) - min(t_unicos), " min"),
+    paste0(sum(t_cheg > 42 & t_cheg < 45), " observados (esperado: 0)")
+  )
+)
+
+knitr::kable(
+  estrutura_tbl,
+  align = c("l", "r"),
+  caption = "Estrutura da distribuição dos tempos de chegada.",
+  col.names = c("Característica", "Valor")
+)
+```
+
+### Estatísticas descritivas dos tempos de chegada
+
+```{r desc-tempos,echo=FALSE}
+tab_t <- data.frame(
+  Estatística = c("Mínimo", "P2,5%", "Q1 (25%)", "Mediana",
+                  "Média", "Q3 (75%)", "P97,5%", "Máximo", "DP"),
+  Valor = c(
+    min(t_cheg),
+    quantile(t_cheg, 0.025),
+    quantile(t_cheg, 0.25),
+    median(t_cheg),
+    mean(t_cheg),
+    quantile(t_cheg, 0.75),
+    quantile(t_cheg, 0.975),
+    max(t_cheg),
+    sd(t_cheg)
+  )
+)
+
+knitr::kable(
+  tab_t, digits = 2, align = "lr",
+  caption = "Estatísticas descritivas da distribuição dos tempos de chegada (tentativas bem-sucedidas)."
+)
+```
+
+### PDF empírica — frequência relativa por tempo
+
+```{r fig-pdf, echo=FALSE, fig.cap="Distribuição de probabilidades dos tempos de chegada (tentativas bem-sucedidas). As famílias de tempo derivadas na Seção 1.2 produzem os grupos de barras visíveis, separados pelos vazios estruturais. A linha tracejada vertical marca o limite de 60 minutos.", fig.height=4.5}
+
+# frequência relativa de cada tempo (condicional às chegadas)
+pdf_df <- as.data.frame(table(t_cheg)) |>
+  dplyr::mutate(
+    t    = as.integer(as.character(t_cheg)),
+    prob = Freq / sum(Freq),
+    # família j de cada tempo
+    j    = factor(floor((t - 35) / 10),
+                  labels = paste0("j = ", 0:floor((max(t) - 35) / 10)))
+  )
+
+ggplot(pdf_df, aes(x = t, y = prob, fill = j)) +
+  geom_col(width = 0.85, alpha = 0.85) +
+  geom_vline(xintercept = 60.5, linetype = "dashed",
+             linewidth = 0.7, color = "black") +
+  annotate("text", x = 61.5, y = max(pdf_df$prob) * 0.95,
+           label = "t = 60 min", hjust = 1, size = 3.2) +
+  scale_fill_brewer(palette = "Set2", name = "Família (j)") +
+  scale_x_continuous(breaks = seq(35, max(pdf_df$t), by = 5)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  labs(
+    x = "Tempo de chegada (min)",
+    y = "Probabilidade condicional P(T = t | chegada)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom",
+        panel.grid.minor = element_blank())
+```
+
+A multimodalidade prevista na Seção 1.2 é claramente visível: cada família $j$ forma um 
+grupo de barras separado, e os vazios entre as famílias $j=0$/$j=1$ (entre $42$ e $45$ 
+min) e $j=1$/$j=2$ (entre $54$ e $55$ min) correspondem exatamente aos intervalos sem 
+tempos possíveis derivados analiticamente. A partir de $j=2$, as famílias se sobrepõem 
+e o histograma torna-se mais contínuo.
+
+### CDF empírica dos tempos de chegada
+
+A função de distribuição acumulada (CDF) responde diretamente à pergunta central do 
+Item 1 — e também ao Item 4: dado qualquer limite de tempo $t^*$, qual a probabilidade 
+de chegada?
+
+```{r fig-cdf, echo=FALSE, fig.cap="CDF empírica dos tempos de chegada (escada azul) com banda de confiança bootstrap de 95\\% (faixa azul clara). A linha tracejada horizontal marca $p = 0{,}50$ e a vertical marca $t = 60$ min. Os pontos vermelhos indicam os quantis $Q_1$, mediana e $Q_3$.", fig.height=4.5}
+
+# CDF empírica
+t_seq    <- seq(min(t_cheg), max(t_cheg))
+cdf_vals <- ecdf(t_cheg)(t_seq)
+
+# banda de confiança bootstrap da CDF
+B_cdf   <- 2000L
+cdf_boot <- replicate(B_cdf, {
+  t_boot <- sample(t_cheg, length(t_cheg), replace = TRUE)
+  ecdf(t_boot)(t_seq)
+})
+cdf_inf <- apply(cdf_boot, 1, quantile, 0.025)
+cdf_sup <- apply(cdf_boot, 1, quantile, 0.975)
+
+cdf_df <- data.frame(t = t_seq, cdf = cdf_vals,
+                     inf = cdf_inf, sup = cdf_sup)
+
+# quantis de interesse
+q_pts <- data.frame(
+  t    = quantile(t_cheg, c(0.25, 0.50, 0.75)),
+  prob = c(0.25, 0.50, 0.75),
+  lab  = c("Q1", "Mediana", "Q3")
+)
+
+ggplot(cdf_df, aes(x = t)) +
+  geom_ribbon(aes(ymin = inf, ymax = sup),
+              fill = "steelblue", alpha = 0.2) +
+  geom_step(aes(y = cdf), color = "steelblue", linewidth = 0.9) +
+  geom_hline(yintercept = 0.5, linetype = "dashed",
+             linewidth = 0.6, color = "grey40") +
+  geom_vline(xintercept = 60, linetype = "dashed",
+             linewidth = 0.6, color = "black") +
+  geom_point(data = q_pts, aes(x = t, y = prob),
+             color = "firebrick", size = 3, inherit.aes = FALSE) +
+  geom_text(data = q_pts, aes(x = t, y = prob, label = lab),
+            hjust = -0.2, vjust = 0.4, size = 3.2,
+            color = "firebrick", inherit.aes = FALSE) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     breaks = seq(0, 1, by = 0.1)) +
+  scale_x_continuous(breaks = seq(35, max(t_seq), by = 5)) +
+  labs(
+    x       = "Tempo de chegada (min)",
+    y       = "P(T ≤ t | chegada)",
+    caption = "Faixa cinza: banda de confiança bootstrap 95% da CDF."
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.minor = element_blank())
+```
+
+### Tempo Médio de Chegada com IC Bootstrap
+
+```{r media-condicional}
+# IC bootstrap para a média dos tempos de chegada
+B_med    <- 5000L
+med_boot <- replicate(B_med,
+              mean(sample(t_cheg, length(t_cheg), replace = TRUE)))
+
+ic_med <- quantile(med_boot, c(0.025, 0.975))
+
+media_tbl <- data.frame(
+  Métrica = c(
+    "Média",
+    "Mediana", 
+    "Desvio padrão",
+    "IC 95\\% inferior (Bootstrap)",
+    "IC 95\\% superior (Bootstrap)",
+    "Q1 (25\\%)",
+    "Q3 (75\\%)",
+    "Mínimo",
+    "Máximo"
+  ),
+  Valor = c(
+    sprintf("%.2f min", mean(t_cheg)),
+    sprintf("%.0f min", median(t_cheg)),
+    sprintf("%.2f min", sd(t_cheg)),
+    sprintf("%.2f min", ic_med[1]),
+    sprintf("%.2f min", ic_med[2]),
+    sprintf("%.0f min", quantile(t_cheg, 0.25)),
+    sprintf("%.0f min", quantile(t_cheg, 0.75)),
+    sprintf("%.0f min", min(t_cheg)),
+    sprintf("%.0f min", max(t_cheg))
+  ),
+  stringsAsFactors = FALSE
+)
+
+knitr::kable(
+  media_tbl,
+  align = c("l", "r"),
+  caption = "Estatísticas descritivas dos tempos de chegada com IC Bootstrap 95\\%.",
+  col.names = c("Métrica", "Valor"),
+  escape = FALSE
+)
+
+```
+
+A distribuição dos tempos de chegada apresenta média e mediana praticamente coincidentes
+($\bar{t} \approx \text{mediana} \approx `r round(mean(t_cheg), 1)`$ min),
+indicando simetria aproximada **dentro da janela de observação**. Esse comportamento é
+consequência direta do truncamento em $t = 60$ min: ao restringir a análise às chegadas
+com $T \leq 60$, eliminamos a cauda direita gerada pelos caminhos mais longos ($j \geq 2$
+com muitos atrasos), tornando a distribuição aproximadamente simétrica em torno do centro
+da família $j = 1$.
+
+> **Nota sobre truncamento:** os `r N` cenários simulados utilizam `TEMPO_MAX = 180` min
+> como horizonte de simulação (Seção 3.1), mas a análise desta seção é restrita às
+> chegadas com $T \leq 60$ min via filtro `tempo[chegou & tempo <= 60]`. Portanto, a
+> distribuição de $T$ analisada aqui é **condicional** a $T \leq 60$ min; chegadas em
+> $t > 60$ min (família $j = 2$ com $d > 5$, e $j \geq 3$) não integram esta distribuição.
+> A "longa cauda à direita" da distribuição **incondicional** de $T$ é visível na curva
+> $p(t^*)$ da Seção 3.5, que utiliza os dados completos do horizonte de 180 min.
+
+O Bootstrap fornece um intervalo de confiança para a média sem suposições paramétricas
+sobre a distribuição de $T$, com amplitude estreita — reflexo da grande quantidade de
+chegadas observadas.
+
+## Curva de Chegada por Limite de Tempo
+
+O quarto objetivo é investigar como a probabilidade de chegada $p(t^*) = P(T \leq t^*)$ 
+varia em função do tempo máximo permitido $t^*$, partindo do menor valor possível 
+$t^* = 35$ minutos.
+
+A estratégia adotada é eficiente: em vez de re-simular $N$ tentativas para cada valor 
+de $t^*$, **reutilizamos os tempos de chegada já simulados**. Para cada $t^*$, basta 
+contar quantas chegadas tiveram $\text{tempo} \leq t^*$ e dividir por $N$. Isso 
+equivale a avaliar a CDF da distribuição marginal de $T$ (incluindo as não-chegadas 
+como $T = +\infty$) em cada ponto da grade.
+
+```{r curva-prob-tempo, cache=TRUE}
+# grade de t* de 35 a 3 horas (limite superior generoso para ver convergência)
+t_grid <- 35:180
+
+# p(t*) = proporção de simulações que chegaram em tempo ≤ t*
+# (inclui não-chegadas, cujo tempo é "infinito" → nunca contam)
+p_grid <- sapply(t_grid, function(t_star) mean(chegou & tempo <= t_star))
+
+# IC de Wilson para cada ponto da grade
+ic_grid <- t(sapply(p_grid, wilson_ic, n = N))   # reutiliza wilson_ic() da seção 3.2
+
+curva_df <- data.frame(
+  t    = t_grid,
+  p    = p_grid,
+  inf  = ic_grid[, "inf"],
+  sup  = ic_grid[, "sup"]
+)
+
+# limite assintótico: probabilidade de chegada com tempo ilimitado
+# estimado como p(t* = max observado entre chegadas)
+p_assintotico <- mean(chegou)   # = p̂ da seção 3.2
+
+# Marcos de tempo relevantes
+marcos <- c(35, 40, 45, 50, 55, 60, 70, 80, 90, 120, 150, 180)
+
+curva_marcos <- data.frame(
+  `Tempo-limite $t^*$ (min)` = marcos,
+  `$P(T \\leq t^*)$` = sprintf("%.5f", curva_df$p[curva_df$t %in% marcos]),
+  `IC 95\\% (inferior)` = sprintf("%.5f", curva_df$inf[curva_df$t %in% marcos]),
+  `IC 95\\% (superior)` = sprintf("%.5f", curva_df$sup[curva_df$t %in% marcos]),
+  check.names = FALSE
+)
+
+# Adicionar linha do limite assintótico
+curva_marcos <- rbind(
+  curva_marcos,
+  data.frame(
+    `Tempo-limite $t^*$ (min)` = "$\\infty$",
+    `$P(T \\leq t^*)$` = sprintf("%.5f", p_assintotico),
+    `IC 95\\% (inferior)` = sprintf("%.5f", wilson_ic(p_assintotico, N)["inf"]),
+    `IC 95\\% (superior)` = sprintf("%.5f", wilson_ic(p_assintotico, N)["sup"]),
+    check.names = FALSE
+  )
+)
+
+knitr::kable(
+  curva_marcos,
+  align = c("c", "c", "c", "c"),
+  caption = "Probabilidade estimada de chegada $P(T \\leq t^*)$ para tempos-limite selecionados, com IC de Wilson (95\\%). A última linha mostra o limite assintótico $p(\\infty)$.",
+  col.names = c("Tempo-limite $t^*$ (min)", "$P(T \\leq t^*)$", "IC 95\\% inferior", "IC 95\\% superior"),
+  escape = FALSE
+)
+```
+
+```{r fig-curva-prob, echo=FALSE, fig.cap="Probabilidade de chegada $p(t^*)$ em função do tempo-limite $t^*$ (linha azul), com banda de confiança de Wilson 95\\% (faixa azul clara). As linhas tracejadas verticais marcam $t^* = 35$ min (mínimo teórico) e $t^* = 60$ min. A linha tracejada horizontal indica o limite assintótico $p(\\infty) = \\hat{p}$.", fig.height=4.5}
+
+ggplot(curva_df, aes(x = t)) +
+  geom_ribbon(aes(ymin = inf, ymax = sup),
+              fill = "steelblue", alpha = 0.25) +
+  geom_line(aes(y = p), color = "steelblue", linewidth = 1) +
+  # limite assintótico
+  geom_hline(yintercept = p_assintotico, linetype = "dotted",
+             linewidth = 0.7, color = "firebrick") +
+  annotate("text", x = 185, y = p_assintotico,
+           label = sprintf("p(∞) ≈ %.3f", p_assintotico),
+           hjust = 1, vjust = -0.5, size = 3.2, color = "firebrick") +
+  # marcos verticais
+  geom_vline(xintercept = 35, linetype = "dashed",
+             linewidth = 0.6, color = "grey40") +
+  geom_vline(xintercept = 60, linetype = "dashed",
+             linewidth = 0.6, color = "black") +
+  annotate("text", x = 35, y = 0.01,
+           label = "t* = 35", hjust = -0.1, size = 3) +
+  annotate("text", x = 60, y = 0.01,
+           label = "t* = 60", hjust = -0.1, size = 3) +
+  # ponto destacado em t* = 60
+  geom_point(
+    data = curva_df[curva_df$t == 60, ],
+    aes(x = t, y = p), color = "black", size = 3, inherit.aes = FALSE
+  ) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     breaks = seq(0, 1, by = 0.1),
+                     limits = c(0, NA)) +
+  scale_x_continuous(breaks = seq(35, 180, by = 15)) +
+  labs(
+    x       = "Tempo-limite t* (min)",
+    y       = "P(chegada em ≤ t* min)",
+    caption = "Faixa azul: IC Wilson 95%. Linha pontilhada vermelha: limite assintótico."
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.minor = element_blank())
+```
+
+A região $35 \leq t^* \leq 90$ min concentra o comportamento mais rico: os saltos das 
+famílias $j$ e os platôs dos vazios estruturais são claramente visíveis no zoom abaixo.
+
+```{r fig-curva-zoom, echo=FALSE, fig.cap="Zoom da curva $p(t^*)$ entre 35 e 90 minutos. Os platôs horizontais correspondem aos vazios estruturais entre famílias de caminhos (Seção 1.2). Os degraus mais acentuados indicam as regiões de maior concentração de tempos de chegada.", fig.height=4}
+
+curva_zoom <- curva_df[curva_df$t <= 90, ]
+
+ggplot(curva_zoom, aes(x = t)) +
+  geom_ribbon(aes(ymin = inf, ymax = sup),
+              fill = "steelblue", alpha = 0.25) +
+  geom_step(aes(y = p), color = "steelblue", linewidth = 1) +
+  # família j=0: t ∈ [35, 42]
+  annotate("rect", xmin = 35, xmax = 42, ymin = -Inf, ymax = Inf,
+           alpha = 0.07, fill = "forestgreen") +
+  annotate("text", x = 38.5, y = max(curva_zoom$sup) * 0.92,
+           label = "j=0", size = 3, color = "forestgreen") +
+  # família j=1: t ∈ [45, 54]
+  annotate("rect", xmin = 45, xmax = 54, ymin = -Inf, ymax = Inf,
+           alpha = 0.07, fill = "darkorange") +
+  annotate("text", x = 49.5, y = max(curva_zoom$sup) * 0.92,
+           label = "j=1", size = 3, color = "darkorange") +
+  # família j=2: t ∈ [55, 66]
+  annotate("rect", xmin = 55, xmax = 66, ymin = -Inf, ymax = Inf,
+           alpha = 0.07, fill = "firebrick") +
+  annotate("text", x = 60.5, y = max(curva_zoom$sup) * 0.92,
+           label = "j=2", size = 3, color = "firebrick") +
+  geom_vline(xintercept = 60, linetype = "dashed",
+             linewidth = 0.6, color = "black") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  scale_x_continuous(breaks = seq(35, 90, by = 5)) +
+  labs(
+    x       = "Tempo-limite t* (min)",
+    y       = "P(chegada em ≤ t* min)",
+    caption = "Regiões coloridas: famílias j=0, j=1, j=2 (Seção 1.2). Platôs = vazios estruturais."
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.minor = element_blank())
+```
+
+A curva $p(t^*)$ apresenta três fases distintas:
+
+**Fase 1 — Crescimento em degraus ($35 \leq t^* \lesssim 65$ min):** as famílias $j = 0$,
+$j = 1$ e $j = 2$ contribuem com blocos de probabilidade concentrados, separados pelos
+platôs dos vazios estruturais (Seção 1.2). O crescimento é irregular e descontínuo
+nessa região, com os maiores saltos ocorrendo nos centros de cada família.
+
+**Fase 2 — Crescimento suave ($65 \lesssim t^* \lesssim 120$ min):** as famílias
+$j \geq 3$ passam a contribuir, com probabilidades cada vez menores. O viés acentuado
+para leste e norte ($P(L) + P(N) = 0{,}80$) torna muito improvável que um caminho
+acumule três ou mais pares de passos desperdiçados, de modo que os incrementos nessa
+fase são pequenos e a curva começa a se achatar progressivamente.
+
+**Fase 3 — Convergência assintótica ($t^* \gtrsim 120$ min):** a curva se aproxima do
+limite $p(\infty) < 1$ de forma assintótica. O limite é estritamente menor que 1 porque
+existe probabilidade positiva (embora muito pequena) de o bêbado nunca chegar — por
+exemplo, sequências longas de passos para oeste e sul. Nas $N = 100.000$ simulações,
+as chegadas além de $t^* \approx 150$ min tornam-se raríssimas, e a curva estabiliza
+empiricamente antes do horizonte de $180$ min.
+
+
+```{r taxa-convergencia,echo=FALSE}
+# Quanto da probabilidade total já foi capturado em cada marco
+# Marcos de tempo para análise de convergência
+marcos_conv <- c(35, 45, 55, 60, 70, 90, 120)
+
+# Calcular fração capturada em cada marco
+convergencia_tbl <- data.frame(
+  `Tempo-limite $t^*$ (min)` = marcos_conv,
+  `$P(T \\leq t^*)$` = sprintf("%.5f", curva_df$p[curva_df$t %in% marcos_conv]),
+  `Fração de $p(\\infty)$` = sprintf("%.2f\\%%", 
+    100 * curva_df$p[curva_df$t %in% marcos_conv] / p_assintotico),
+  `Prob. restante` = sprintf("%.2f\\%%", 
+    100 * (1 - curva_df$p[curva_df$t %in% marcos_conv] / p_assintotico)),
+  check.names = FALSE
+)
+
+knitr::kable(
+  convergencia_tbl,
+  align = c("c", "c", "c", "c"),
+  caption = "Taxa de convergência da probabilidade de chegada em direção ao limite assintótico $p(\\infty)$.",
+  col.names = c("Tempo-limite $t^*$ (min)", "$P(T \\leq t^*)$", 
+                "Fração de $p(\\infty)$", "Prob. restante"),
+  escape = FALSE
+)
+```
+
+# Visualizações
+
+## Trajetórias Sobrepostas: Sucesso vs. Falha
+
+```{r simula-trajetorias, cache=TRUE}
+# simula separadamente sucessos e falhas com trajetória gravada
+# repete até obter n_cada de cada tipo
+set.seed(777)
+n_cada <- 20L   # 20 sucessos + 20 falhas
+
+# "sucesso" e "falha" referem-se ao horizonte de simulação TEMPO_MAX = 180 min,
+# independente do critério analítico de 60 min usado nas seções anteriores
+trajs_suc <- vector("list", n_cada)
+trajs_fal <- vector("list", n_cada)
+i_s <- 0L; i_f <- 0L
+
+while (i_s < n_cada || i_f < n_cada) {
+  res <- simular_bebado(TEMPO_MAX, guardar_traj = TRUE)
+  if (res$chegou && i_s < n_cada) {
+    i_s <- i_s + 1L
+    trajs_suc[[i_s]] <- data.frame(
+      res$traj, id = i_s, tipo = "Sucesso"
+    )
+  } else if (!res$chegou && i_f < n_cada) {
+    i_f <- i_f + 1L
+    trajs_fal[[i_f]] <- data.frame(
+      res$traj, id = i_f, tipo = "Falha"
+    )
+  }
+}
+
+# consolida em um único data frame
+traj_df <- dplyr::bind_rows(c(trajs_suc, trajs_fal)) |>
+  dplyr::rename(x = X1, y = X2) |>
+  dplyr::group_by(id, tipo) |>
+  dplyr::mutate(passo = dplyr::row_number()) |>
+  dplyr::ungroup()
+```
+
+```{r fig-trajetorias, echo=FALSE, fig.cap="Vinte trajetórias de sucesso (verde, painel direito) e vinte de falha (vermelho, painel esquerdo). Cada linha representa uma tentativa independente. O ponto sólido grande indica a origem $(0,0)$ e o asterisco o destino $(3,4)$. O alpha baixo revela as sobreposições, regiões mais escuras são visitadas por múltiplas trajetórias.", fig.height=5.5}
+
+# pontos de referência
+ref_pts <- data.frame(
+  x    = c(0, 3),
+  y    = c(0, 4),
+  tipo_ref = c("Origem (0,0)", "Destino (3,4)"),
+  shape    = c(19, 8)
+)
+
+cores <- c("Sucesso" = "#2ca25f", "Falha" = "#e34a33")
+
+ggplot(traj_df, aes(x = x, y = y, group = id, color = tipo)) +
+  geom_path(alpha = 0.35, linewidth = 0.55) +
+  # origem
+  geom_point(
+    data = data.frame(x = 0, y = 0),
+    aes(x = x, y = y), inherit.aes = FALSE,
+    shape = 19, size = 3.5, color = "black"
+  ) +
+  # destino
+  geom_point(
+    data = data.frame(x = 3, y = 4),
+    aes(x = x, y = y), inherit.aes = FALSE,
+    shape = 8, size = 3.5, stroke = 1.2, color = "black"
+  ) +
+  annotate("text", x = 0, y = 0, label = "(0,0)",
+           hjust = 1.2, vjust =  0.5, size = 2.8) +
+  annotate("text", x = 3, y = 4, label = "(3,4)",
+           hjust = -0.2, vjust =  0.5, size = 2.8) +
+  facet_wrap(~tipo, ncol = 2) +
+  scale_color_manual(values = cores, guide = "none") +
+  coord_fixed() +
+  labs(x = "x", y = "y") +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.minor  = element_blank(),
+    strip.text        = element_text(face = "bold", size = 11),
+    panel.border      = element_rect(color = "grey80", fill = NA)
+  )
+```
+
+```{r fig-traj-comprimento, echo=FALSE, fig.cap="Distribuição do número de passos por trajetória, separado por desfecho. Trajetórias de falha tendem a ser mais longas pois continuam até o limite de tempo; trajetórias de sucesso concentram-se nos valores mínimos compatíveis com a chegada.", fig.height=3.5}
+
+# número de passos por trajetória
+n_passos_df <- traj_df |>
+  dplyr::group_by(id, tipo) |>
+  dplyr::summarise(n_passos = max(passo) - 1L, .groups = "drop")
+
+ggplot(n_passos_df, aes(x = n_passos, fill = tipo)) +
+  geom_histogram(binwidth = 1, alpha = 0.8, color = "white",
+                 position = "identity") +
+  scale_fill_manual(values = cores, name = "Desfecho") +
+  facet_wrap(~tipo, scales = "free_y", ncol = 2) +
+  labs(
+    x = "Número de passos",
+    y = "Frequência (20 trajetórias cada)"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold"))
+```
+
+As trajetórias de **sucesso** são visualmente mais compactas e direcionadas ao quadrante 
+nordeste — reflexo do viés para leste ($0{,}35$) e norte ($0{,}45$) que soma $0{,}80$ 
+de probabilidade. As trajetórias de **falha** exploram regiões mais amplas da malha, 
+frequentemente desviando-se para sul ou oeste em momentos críticos e não conseguindo 
+compensar o atraso dentro do limite de $60$ minutos.
+
+## Mapa de Calor das Posições Visitadas
+
+As 40 trajetórias da seção anterior são ilustrativas, mas insuficientes para estimar 
+com precisão quais regiões da malha são mais frequentadas. Para isso, simulamos um 
+número maior de trajetórias completas e contamos quantas vezes cada coordenada 
+$(x, y)$ foi visitada — separando sucessos de falhas para revelar como os padrões de 
+ocupação diferem entre os dois desfechos.
+
+```{r simula-heatmap, cache=TRUE}
+set.seed(777)
+n_tipo  <- 1000L   # 1000 sucessos + 1000 falhas
+
+# critério: chegou ou não dentro de TEMPO_MAX = 180 min (horizonte de simulação)
+heat_suc <- vector("list", n_tipo)
+heat_fal <- vector("list", n_tipo)
+i_s <- 0L; i_f <- 0L
+
+while (i_s < n_tipo || i_f < n_tipo) {
+  res <- simular_bebado(TEMPO_MAX, guardar_traj = TRUE)
+  if (res$chegou && i_s < n_tipo) {
+    i_s <- i_s + 1L
+    heat_suc[[i_s]] <- data.frame(res$traj, tipo = "Sucesso")
+  } else if (!res$chegou && i_f < n_tipo) {
+    i_f <- i_f + 1L
+    heat_fal[[i_f]] <- data.frame(res$traj, tipo = "Falha")
+  }
+}
+
+heat_df <- dplyr::bind_rows(c(heat_suc, heat_fal)) |>
+  dplyr::rename(x = X1, y = X2)
+```
+
+```{r fig-heatmap-facet, echo=FALSE, fig.cap="Mapa de calor das posições visitadas em 1.000 trajetórias de sucesso (direita) e 1.000 de falha (esquerda). A intensidade de cor representa a frequência de visitas normalizada pelo número de trajetórias. Origem marcada com círculo preto; destino com asterisco.", fig.height=5.5}
+
+# frequência de visita por célula, normalizada por n_tipo
+heat_count <- heat_df |>
+  dplyr::count(x, y, tipo) |>
+  dplyr::mutate(freq_rel = n / n_tipo)
+
+# limites simétricos para escala de cor comparável entre painéis
+max_freq <- max(heat_count$freq_rel)
+
+ggplot(heat_count, aes(x = x, y = y, fill = freq_rel)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  # origem
+  geom_point(
+    data = data.frame(x = 0, y = 0, tipo = c("Sucesso", "Falha")),
+    aes(x = x, y = y), inherit.aes = FALSE,
+    shape = 19, size = 3, color = "black"
+  ) +
+  # destino
+  geom_point(
+    data = data.frame(x = 3, y = 4, tipo = c("Sucesso", "Falha")),
+    aes(x = x, y = y), inherit.aes = FALSE,
+    shape = 8, size = 3.5, stroke = 1.2, color = "black"
+  ) +
+  facet_wrap(~tipo, ncol = 2) +
+  scale_fill_distiller(
+    palette  = "YlOrRd",
+    direction = 1,
+    limits   = c(0, max_freq),
+    name     = "Visitas /\ntrajetória",
+    labels   = scales::number_format(accuracy = 0.1)
+  ) +
+  coord_fixed() +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  scale_y_continuous(breaks = scales::pretty_breaks()) +
+  labs(x = "x", y = "y") +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid     = element_blank(),
+    strip.text     = element_text(face = "bold", size = 11),
+    legend.position = "right",
+    panel.border   = element_rect(color = "grey70", fill = NA)
+  )
+```
+
+```{r fig-heatmap-diferenca, echo=FALSE, fig.cap="Diferença de frequência de visitas (Sucesso $-$ Falha) por célula da malha. Células azuis são proporcionalmente mais visitadas em trajetórias de sucesso; células vermelhas em trajetórias de falha. Células brancas têm frequência similar nos dois grupos.", fig.height=4.5}
+
+# diferença sucesso - falha por célula
+heat_wide <- tidyr::pivot_wider(
+  heat_count[, c("x", "y", "tipo", "freq_rel")],
+  names_from  = tipo,
+  values_from = freq_rel,
+  values_fill = 0
+) |>
+  dplyr::mutate(delta = Sucesso - Falha)
+
+lim_delta <- max(abs(heat_wide$delta))
+
+ggplot(heat_wide, aes(x = x, y = y, fill = delta)) +
+  geom_tile(color = "white", linewidth = 0.3) +
+  geom_point(
+    data = data.frame(x = 0, y = 0),
+    aes(x = x, y = y), inherit.aes = FALSE,
+    shape = 19, size = 3, color = "black"
+  ) +
+  geom_point(
+    data = data.frame(x = 3, y = 4),
+    aes(x = x, y = y), inherit.aes = FALSE,
+    shape = 8, size = 3.5, stroke = 1.2, color = "black"
+  ) +
+  scale_fill_distiller(
+    palette   = "RdBu",
+    direction = 1,
+    limits    = c(-lim_delta, lim_delta),
+    name      = "Δ visitas\n(S − F)"
+  ) +
+  coord_fixed() +
+  scale_x_continuous(breaks = scales::pretty_breaks()) +
+  scale_y_continuous(breaks = scales::pretty_breaks()) +
+  labs(
+    x       = "x",
+    y       = "y",
+    caption = "Azul: mais visitado em sucessos. Vermelho: mais visitado em falhas."
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid    = element_blank(),
+    panel.border  = element_rect(color = "grey70", fill = NA)
+  )
+```
+
+O mapa de diferença revela a estrutura espacial do sucesso: as células do corredor 
+nordeste — ao longo da diagonal que conecta $(0,0)$ a $(3,4)$ — são substancialmente 
+mais visitadas em trajetórias de sucesso. Em contrapartida, trajetórias de falha 
+concentram visitas em coordenadas com $x < 0$ ou $y < 0$, regiões que afastam o bêbado 
+do destino e das quais é difícil retornar dentro do limite de $60$ minutos. A origem 
+$(0,0)$ aparece como a célula mais visitada em ambos os desfechos — trivialmente, pois 
+é o ponto de partida de todas as trajetórias.
+
+## Comparação de CDFs
+
+A Seção 3.4 apresentou a CDF condicional — $P(T \leq t \mid \text{chegada})$ — como 
+ferramenta analítica para a distribuição dos tempos de chegada. Esta seção produz uma 
+visualização mais completa, reunindo em um único gráfico **duas perspectivas 
+complementares** da função de distribuição acumulada:
+
+1. **CDF marginal** $F(t) = P(T \leq t)$: inclui todas as $N$ simulações; as 
+   não-chegadas contribuem com $T = +\infty$, de modo que $F(t) \to \hat{p} < 1$.
+2. **CDF condicional** $F(t \mid \text{chegada}) = P(T \leq t \mid T < \infty)$: 
+   restrita às tentativas bem-sucedidas; converge a $1$.
+
+As duas juntas revelam uma relação simples mas importante:
+$$F(t) = \hat{p} \cdot F(t \mid \text{chegada})$$
+
+```{r cdf-dados}
+# grade comum de tempos (apenas os possíveis: ≥ 35)
+t_cdf <- seq(35, max(t_cheg))
+
+# CDF marginal: conta chegadas com tempo ≤ t* sobre TODAS as simulações
+cdf_marginal   <- sapply(t_cdf, function(t) mean(chegou & tempo <= t))
+
+# CDF condicional: ECDF calculada só nos tempos de chegada
+ecdf_cond      <- ecdf(t_cheg)
+cdf_condicional <- ecdf_cond(t_cdf)
+
+# banda bootstrap para a CDF condicional (percentil 95%)
+B_cdf2   <- 2000L
+boot_cond <- replicate(B_cdf2, {
+  ecdf(sample(t_cheg, length(t_cheg), replace = TRUE))(t_cdf)
+})
+cdf_cond_inf <- apply(boot_cond, 1, quantile, 0.025)
+cdf_cond_sup <- apply(boot_cond, 1, quantile, 0.975)
+
+# consolida
+cdf_plot_df <- data.frame(
+  t              = t_cdf,
+  marginal       = cdf_marginal,
+  condicional    = cdf_condicional,
+  cond_inf       = cdf_cond_inf,
+  cond_sup       = cdf_cond_sup
+)
+```
+
+```{r fig-cdf-dupla, echo=FALSE, fig.cap="CDF marginal $F(t)$ (azul escuro) e CDF condicional $F(t \\mid \\text{chegada})$ (verde) dos tempos de chegada. A faixa verde clara é a banda de confiança bootstrap 95\\% da CDF condicional. As linhas tracejadas marcam $t = 60$ min (vertical) e os limites assintóticos de cada curva (horizontais). Os degraus são visíveis na região inicial — consequência direta da estrutura discreta derivada na Seção 1.2.", fig.height=5}
+
+# linhas de referência horizontais
+refs_h <- data.frame(
+  y     = c(p_assintotico, 1),
+  label = c(sprintf("p̂ = %.3f", p_assintotico), "1,000"),
+  color = c("steelblue4", "forestgreen")
+)
+
+ggplot(cdf_plot_df, aes(x = t)) +
+  # banda bootstrap da condicional
+  geom_ribbon(aes(ymin = cond_inf, ymax = cond_sup),
+              fill = "forestgreen", alpha = 0.18) +
+  # CDF marginal
+  geom_step(aes(y = marginal, color = "Marginal F(t)"),
+            linewidth = 0.9) +
+  # CDF condicional
+  geom_step(aes(y = condicional, color = "Condicional F(t|chegada)"),
+            linewidth = 0.9) +
+  # assintóticos horizontais
+  geom_hline(yintercept = p_assintotico, linetype = "dotted",
+             linewidth = 0.6, color = "steelblue4") +
+  geom_hline(yintercept = 1, linetype = "dotted",
+             linewidth = 0.6, color = "forestgreen") +
+  # marco t = 60
+  geom_vline(xintercept = 60, linetype = "dashed",
+             linewidth = 0.6, color = "grey30") +
+  # anotações dos assintóticos
+  annotate("text", x = max(t_cdf) + 0.5, y = p_assintotico,
+           label  = sprintf("p̂ ≈ %.3f", p_assintotico),
+           hjust  = 1, vjust = -0.5, size = 3, color = "steelblue4") +
+  annotate("text", x = max(t_cdf) + 0.5, y = 1,
+           label  = "1,000",
+           hjust  = 1, vjust = -0.5, size = 3, color = "forestgreen") +
+  annotate("text", x = 61, y = 0.03,
+           label  = "t = 60 min",
+           hjust  = 1, size = 3, color = "grey30") +
+  scale_color_manual(
+    values = c("Marginal F(t)"          = "steelblue4",
+               "Condicional F(t|chegada)" = "forestgreen"),
+    name   = "CDF"
+  ) +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    breaks = seq(0, 1, 0.1),
+    sec.axis = dup_axis(
+      breaks = c(p_assintotico, 1),
+      labels = c(sprintf("%.3f", p_assintotico), "1,000"),
+      name   = NULL
+    )
+  ) +
+  scale_x_continuous(breaks = seq(35, max(t_cdf), by = 10)) +
+  labs(
+    x       = "Tempo de chegada t (min)",
+    y       = "Probabilidade acumulada",
+    caption = "Faixa verde: IC bootstrap 95% da CDF condicional."
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position  = "bottom",
+    panel.grid.minor = element_blank()
+  )
+```
+
+```{r fig-cdf-zoom-final, echo=FALSE, fig.cap="Zoom da CDF condicional $F(t \\mid \\text{chegada})$ entre 35 e 70 minutos, com famílias $j$ destacadas em fundo. Os platôs entre famílias confirmam visualmente os vazios estruturais derivados na Seção 1.2. A escada sobe abruptamente dentro de cada família e permanece plana nos intervalos sem tempos possíveis.", fig.height=4}
+
+zoom_df <- cdf_plot_df[cdf_plot_df$t <= 70, ]
+
+ggplot(zoom_df, aes(x = t)) +
+  # famílias em fundo
+  annotate("rect", xmin = 35, xmax = 42, ymin = -Inf, ymax = Inf,
+           alpha = 0.07, fill = "forestgreen") +
+  annotate("rect", xmin = 45, xmax = 54, ymin = -Inf, ymax = Inf,
+           alpha = 0.07, fill = "darkorange") +
+  annotate("rect", xmin = 55, xmax = 66, ymin = -Inf, ymax = Inf,
+           alpha = 0.07, fill = "firebrick") +
+  annotate("text", x = 38.5, y = 0.97, label = "j = 0",
+           size = 3, color = "forestgreen") +
+  annotate("text", x = 49.5, y = 0.97, label = "j = 1",
+           size = 3, color = "darkorange") +
+  annotate("text", x = 60.5, y = 0.97, label = "j = 2",
+           size = 3, color = "firebrick") +
+  # platôs: regiões de vazio
+  annotate("text", x = 43.5, y = 0.25,
+           label = "vazio\n[43,44]", size = 2.8, color = "grey50") +
+  geom_ribbon(aes(ymin = cond_inf, ymax = cond_sup),
+              fill = "forestgreen", alpha = 0.2) +
+  geom_step(aes(y = condicional), color = "forestgreen", linewidth = 1) +
+  geom_vline(xintercept = 60, linetype = "dashed",
+             linewidth = 0.6, color = "grey30") +
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 1),
+    breaks = seq(0, 1, 0.1)
+  ) +
+  scale_x_continuous(breaks = seq(35, 70, by = 5)) +
+  labs(
+    x       = "Tempo de chegada t (min)",
+    y       = "F(t | chegada)",
+    caption = "Regiões coloridas: famílias j=0, j=1, j=2. Platôs = vazios estruturais."
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r quantis-cdf,echo=FALSE}
+# quantis da distribuição condicional
+probs_q <- c(0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)
+q_vals  <- quantile(t_cheg, probs_q)
+
+tab_q <- data.frame(
+  `Quantil` = paste0(100 * probs_q, "%"),
+  `t (min)` = as.integer(q_vals),
+  `Interpretação` = c(
+    "10% dos sucessos chegam até este tempo",
+    "25% dos sucessos chegam até este tempo (Q1)",
+    "Metade dos sucessos chega até aqui (mediana)",
+    "75% dos sucessos chegam até este tempo (Q3)",
+    "90% dos sucessos chegam até este tempo",
+    "95% dos sucessos chegam até este tempo",
+    "99% dos sucessos chegam até este tempo"
+  ),
+  check.names = FALSE
+)
+
+knitr::kable(
+  tab_q, align = "rlll",
+  caption = "Quantis selecionados da distribuição condicional $F(t \\mid \\text{chegada})$."
+)
+```
+
+A relação $F(t) = \hat{p} \cdot F(t \mid \text{chegada})$ é verificável diretamente 
+no gráfico: em qualquer $t$, a curva marginal (azul) é exatamente $\hat{p}$ vezes a 
+condicional (verde). Os dois assintóticos — $\hat{p}$ para a marginal e $1$ para a 
+condicional — confirmam essa decomposição. O eixo secundário direito torna os dois 
+limites imediatamente legíveis sem precisar consultar a legenda.
+
+# Discussão e Conclusões
+
+## Interpretação dos Resultados
+
+### Item 1 — Probabilidade de chegada em até 60 minutos
+
+```{r retoma-item1, echo=FALSE}
+sintese_item1 <- data.frame(
+  Componente = c(
+    "Probabilidade estimada ($\\hat{p}$)",
+    "IC Wilson 95\\%",
+    "IC Bootstrap 95\\%"
+  ),
+  Valor = c(
+    sprintf("%.5f", p_hat),
+    sprintf("[%.5f, %.5f]", ic_wilson["inf"], ic_wilson["sup"]),
+    sprintf("[%.5f, %.5f]", ic_boot[1], ic_boot[2])
+  )
+)
+
+knitr::kable(
+  sintese_item1,
+  align = c("l", "c"),
+  caption = "Síntese dos resultados do Item 1: probabilidade de chegada em até 60 minutos.",
+  col.names = c("Componente", "Resultado"),
+  escape = FALSE
+)
+```
+
+O bêbado chega em casa em até $60$ minutos em aproximadamente $\hat{p}$ das tentativas.
+Wilson e Bootstrap produzem intervalos praticamente idênticos — esperado para $N = 100.000$,
+onde ambos convergem para a mesma cobertura assintótica. O valor parece modesto porque o 
+limite de $60$ min corresponde a apenas $12$ quadras sem atrasos, com $20\%$ de chance de 
+desvio a cada passo.
+
+### Item 2 — Distribuição em 100 tentativas
+
+A distribuição simulada do número de chegadas em grupos de $100$ tentativas aderiu à
+$\text{Binomial}(100, \hat{p})$ — confirmado pelo teste qui-quadrado. Esse resultado decorre
+diretamente da independência entre tentativas garantida pela estrutura da simulação: cada
+tentativa reinicia do zero, sem memória das anteriores.
+
+### Item 3 — Distribuição dos tempos de chegada
+
+A distribuição dos tempos revela a estrutura discreta derivada analiticamente na
+Seção 1.2: tempos de chegada formam famílias separadas por vazios estruturais nos
+primeiros $70$ minutos, com picos multimodais que a simulação confirma.
+
+A distribuição **condicional** ($T \leq 60$ min) apresenta média e mediana aproximadamente
+iguais — consequência do truncamento que elimina a cauda direita. A mediana é a medida
+de tendência central mais robusta para descrever o tempo típico de chegada.
+
+### Item 4 — Curva probabilidade $\times$ tempo-limite
+
+A curva $p(t^*)$ exibe três fases bem definidas nos dados simulados:
+
+- **Degraus ($35 \leq t^* \lesssim 65$ min):** as famílias $j = 0$, $j = 1$ e $j = 2$
+  contribuem com saltos de probabilidade separados pelos vazios estruturais da Seção 1.2.
+- **Crescimento suave ($65 \lesssim t^* \lesssim 120$ min):** as famílias $j \geq 3$
+  adicionam probabilidade de forma decrescente; a curva começa a se aplainar à medida
+  que caminhos mais longos tornam-se exponencialmente menos prováveis.
+- **Convergência assintótica ($t^* \gtrsim 120$ min):** a curva aproxima-se de
+  $p(\infty) < 1$ sem jamais atingi-lo exatamente. O limite ser estritamente menor
+  que $1$ é uma propriedade fundamental do passeio aleatório assimétrico: existe
+  probabilidade positiva — embora ínfima — de o bêbado jamais alcançar $(3, 4)$.
+
+O formato suavemente assintótico da curva além de $t^* = 60$ min — visível apenas
+graças ao horizonte de simulação de $180$ min — é o resultado correto que a teoria
+prediz. Uma simulação com horizonte curto (ex.: $60$ min) interrompe artificialmente
+toda trajetória antes da chegada, colapsando a curva num degrau falso e gerando a
+conclusão errônea de que o limite assintótico seria atingido em $\approx 70$ min.
+
+## Limitações do Modelo
+
+O modelo adotado impõe simplificações que merecem consideração:
+
+**Malha infinita e sem obstáculos.** A cidade real tem limites, ruas de mão única,
+bloqueios e atalhos. O modelo assume que o bêbado pode andar indefinidamente em qualquer
+direção sem restrição, o que superestima a probabilidade de trajetórias muito longas.
+
+**Probabilidades fixas e independentes da posição.** No modelo, a probabilidade de
+escolher norte é sempre $0{,}45$ — mesmo quando o bêbado está ao norte do destino e
+deveria preferencialmente ir para sul. Um modelo mais realista poderia fazer as
+probabilidades depender da posição relativa ao destino, tornando o processo uma cadeia
+de Markov não-homogênea.
+
+**Tempo de decisão binário.** O atraso de $1$ minuto ocorre com probabilidade $0{,}30$
+ou não ocorre — sem gradação. Uma generalização natural seria modelar o tempo de
+decisão como uma variável aleatória contínua (ex.: $\text{Exponencial}(\lambda)$),
+o que tornaria a distribuição de $T$ mais suave e eliminaria parte dos picos discretos.
+
+**Ausência de cansaço ou efeito de memória.** O modelo supõe que a $k$-ésima quadra é
+percorrida ao mesmo ritmo que a primeira. Na prática, o cansaço poderia aumentar o
+tempo por quadra ou a probabilidade de atraso nas decisões ao longo da tentativa.
+
+## Considerações Finais
+
+A simulação de Monte Carlo mostrou-se um instrumento poderoso para analisar sistemas
+estocásticos cuja complexidade combinatória inviabiliza a solução analítica exata. Os
+$N = 100.000$ cenários simulados produziram estimativas precisas — erro padrão
+$\text{EP} < 0{,}002$ para $\hat{p}$ — e permitiram responder a todas as perguntas
+do enunciado a partir de um único conjunto de dados reutilizado em múltiplas análises.
+
+A abordagem destacou-se por integrar teoria e simulação: a análise combinatória
+da Seção 1.2 gerou previsões — vazios estruturais, $t_{\min} = 35$ min, limite
+assintótico $< 1$ — sistematicamente verificadas pelos resultados computacionais.
